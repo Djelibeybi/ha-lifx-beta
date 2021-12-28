@@ -60,12 +60,12 @@ from . import (
 
 _LOGGER = logging.getLogger(__name__)
 
-SCAN_INTERVAL = timedelta(seconds=10)
+SCAN_INTERVAL = timedelta(seconds=30)
 
 DISCOVERY_INTERVAL = 60
-MESSAGE_TIMEOUT = 1.0
-MESSAGE_RETRIES = 8
-UNAVAILABLE_GRACE = 90
+MESSAGE_TIMEOUT = 2.0
+MESSAGE_RETRIES = 5
+UNAVAILABLE_GRACE = 120
 
 FIX_MAC_FW = AwesomeVersion("3.70")
 SWITCH_PRODUCT_IDS = [70, 71, 89]
@@ -383,7 +383,10 @@ class LIFXManager:
         color_resp = await ack(bulb.get_color)
 
         if color_resp is None and version_resp is None:
-            _LOGGER.error("Failed to initialize %s", bulb.ip_addr)
+            _LOGGER.error(
+                "No response received for GetVersion or GetColor from device with IP: %s",
+                bulb.ip_addr,
+            )
             bulb.registered = False
         else:
             bulb.timeout = MESSAGE_TIMEOUT
@@ -393,10 +396,10 @@ class LIFXManager:
             if bulb.mac_addr in self.entities:
                 entity = self.entities[bulb.mac_addr]
                 entity.registered = True
-                _LOGGER.debug("%s register AGAIN", entity.who)
+                _LOGGER.debug("%s rediscovered.", entity.who)
                 await entity.update_hass()
             else:
-                _LOGGER.debug("%s (%s) register NEW", bulb.ip_addr, bulb.label)
+                _LOGGER.debug("%s (%s) discovered.", bulb.label, bulb.ip_addr)
 
                 if lifx_features(bulb)["multizone"]:
                     entity = LIFXStrip(bulb, self.effects_conductor)
@@ -405,7 +408,17 @@ class LIFXManager:
                 else:
                     entity = LIFXWhite(bulb, self.effects_conductor)
 
-                _LOGGER.debug("%s register READY", entity.who)
+                _LOGGER.debug("%s created as %s entity.", entity.who, type(entity))
+
+                _LOGGER.debug(
+                    "%s: setting timeout/retries/grace to %ss/%s/%ss.",
+                    entity.who,
+                    MESSAGE_TIMEOUT,
+                    MESSAGE_RETRIES,
+                    UNAVAILABLE_GRACE,
+                )
+                _LOGGER.debug("%s will be added to the entity registry.", entity.who)
+
                 self.entities[bulb.mac_addr] = entity
                 self.async_add_entities([entity], True)
 
@@ -492,6 +505,7 @@ class LIFXLight(LightEntity):
         if (version := self.bulb.host_firmware_version) is not None:
             info[ATTR_SW_VERSION] = version
 
+        _LOGGER.debug("%s registered device info", self.who)
         return info
 
     @property
@@ -512,7 +526,7 @@ class LIFXLight(LightEntity):
     @property
     def who(self):
         """Return a string identifying the bulb."""
-        return f"{self.bulb.ip_addr} ({self.name})"
+        return f"{self.name} ({self.bulb.ip_addr})"
 
     @property
     def min_mireds(self):
