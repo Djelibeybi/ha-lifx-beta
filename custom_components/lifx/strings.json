@@ -2,12 +2,26 @@
   "config": {
     "step": {
       "confirm": {
-        "description": "Do you want to set up LIFX?"
+        "title": "Enable LIFX integration?"
       }
     },
     "abort": {
       "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]",
       "no_devices_found": "[%key:common::config_flow::abort::no_devices_found%]"
+    }
+  },
+  "options": {
+    "step": {
+      "discovery_options": {
+        "title": "LIFX discovery and retry settings",
+        "description": "Adjust the following settings to tune the discovery and retry intervals to best suit local network conditions and the number of active LIFX devices.",
+        "data": {
+          "scan_interval": "Discovery interval (seconds)",
+          "retry_count": "Retry count",
+          "message_timeout": "Message reply timeout (seconds)",
+          "device_timeout": "Unavailable grace period (seconds)"
+        }
+      }
     }
   }
 }

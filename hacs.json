@@ -1,4 +1,4 @@
 {
     "name": "LIFX (Beta)",
-    "render_readme": true
+    "domains": ["light"]
 }
