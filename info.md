@@ -9,7 +9,7 @@ a custom repository and then install the Beta integration when it appears.
 
 ## Enable debug logging
 
-The LIFX Beta integration will output a lot of (potentially useful) debug logs about its activities and discovery process. To see these logs, adjust your `logger` settings in `configuration.yaml` to enable `debug` for `custom_components.lifx`:
+The LIFX Beta integration can be configured to output an excessive amount of debug logs about its activities and discovery process. To see these logs, adjust your `logger` settings in `configuration.yaml` to enable `debug` for `custom_components.lifx`:
 
 ```yaml
 logger:
@@ -20,13 +20,17 @@ logger:
 
 If you want to report an issue, please collect these logs first, then [open a GitHub issue](https://github.com/Djelibeybi/ha-lifx-beta/issues) and attach the logs. Be sure to review them first so you don't publish anything secret.
 
+If you just want to log failures, set `custom_components.lifx: info` as timeouts and disconnections are logged as warnings or errors depending on the event.
+
 ## Configuration Guide
 
-The LIFX Beta integration _can only be configured via the UI_. Any configuration in `configuration.yaml` _will be ignored_. After installation, the beta will replace the built-in integration, so if you need to restore previous functionality, just uninstall the beta using HACS.
+The LIFX Beta integration _can only be configured via the UI_. Any configuration in `configuration.yaml` _will be ignored_. After installation, the beta will replace the built-in integration, so to restore the ability to configure via the YAML file, uninstall this beta using HACS.
 
 ### Network selection and broadcasts
 
-The LIFX Beta will not send discovery packets on multiple interfaces that are connected to the same network. It will instead use the first interface it finds on each network. To control this behaviour, ensure you enable only a single interface per network in Home Assistant.
+The LIFX Beta will warn if it detects multiple interfaces that are connected to the same network. This is never a great idea and it will have an impact on the efficacy of discovery over time. In particular, check to make sure devices that are connected via wired ethernet and wifi are configured on different broadcast domains for each.
+
+If you're unsure, disable one of the interfaces either physically by unplugging it, or via Home Assistant's network configuration.
 
 ### Configuration options
 

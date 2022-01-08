@@ -16,10 +16,10 @@
         "title": "LIFX discovery and retry settings",
         "description": "Adjust the following settings to tune the discovery and retry intervals to best suit local network conditions and the number of active LIFX devices.",
         "data": {
-          "scan_interval": "Discovery interval (seconds)",
+          "discovery_interval": "Discovery interval (seconds)",
           "retry_count": "Retry count",
           "message_timeout": "Message reply timeout (seconds)",
-          "device_timeout": "Unavailable grace period (seconds)"
+          "grace_period": "Grace period (seconds) before marked unavailable"
         }
       }
     }

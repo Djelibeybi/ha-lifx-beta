@@ -1,33 +1,44 @@
 """Config flow flow LIFX."""
 from __future__ import annotations
 
+import logging
 from typing import Any
 
-import aiolifx
 import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.components import zeroconf
-from homeassistant.const import CONF_SCAN_INTERVAL
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.typing import DiscoveryInfoType
 
+from .aiolifx import aiolifx
 from .const import (
-    CONF_DEV_TIMEOUT,
-    CONF_MSG_TIMEOUT,
+    CONF_DISCOVERY_INTERVAL,
+    CONF_GRACE_PERIOD,
+    CONF_MESSAGE_TIMEOUT,
     CONF_RETRY_COUNT,
-    DEFAULT_DEV_TIMEOUT,
-    DEFAULT_MSG_TIMEOUT,
+    DEFAULT_DISCOVERY_INTERVAL,
+    DEFAULT_GRACE_PERIOD,
+    DEFAULT_MESSAGE_TIMEOUT,
     DEFAULT_RETRY_COUNT,
-    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
+
+_LOGGER = logging.getLogger(__package__)
 
 
 class LifxConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a discovery config flow."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        """Get the options flow for this handler."""
+        return LifxOptionsFlowHandler(config_entry)
 
     def __init__(self) -> None:
         """Initialize the LIFX config flow."""
@@ -38,11 +49,6 @@ class LifxConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Return if there are devices that can be discovered."""
         lifx_ip_addresses = await aiolifx.LifxScan(self.hass.loop).scan()
         return len(lifx_ip_addresses) > 0
-
-    @staticmethod
-    def async_get_options_flow(config_entry):
-        """Get the options flow for this handler."""
-        return LifxOptionsFlowHandler(config_entry)
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -82,6 +88,19 @@ class LifxConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_create_entry(title=self._title, data={})
 
+    async def async_step_discovery(
+        self, discovery_info: DiscoveryInfoType
+    ) -> FlowResult:
+        """Handle a flow initialized by discovery."""
+        if self._async_in_progress() or self._async_current_entries():
+            return self.async_abort(reason="single_instance_allowed")
+
+        _LOGGER.debug(f"Discovered {discovery_info}")
+
+        await self.async_set_unique_id(self._domain)
+
+        return await self.async_step_confirm()
+
     async def async_step_homekit(
         self, discovery_info: zeroconf.ZeroconfServiceInfo
     ) -> FlowResult:
@@ -90,8 +109,19 @@ class LifxConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="single_instance_allowed")
 
         await self.async_set_unique_id(self._domain)
-
         return await self.async_step_confirm()
+
+    async def async_step_import(self, _: dict[str, Any] | None) -> FlowResult:
+        """Handle a flow initialized by import."""
+        if self._async_current_entries():
+            return self.async_abort(reason="single_instance_allowed")
+
+        # Cancel other flows.
+        in_progress = self._async_in_progress()
+        for flow in in_progress:
+            self.hass.config_entries.flow.async_abort(flow["flow_id"])
+
+        return self.async_create_entry(title=self._title, data={})
 
 
 class LifxOptionsFlowHandler(config_entries.OptionsFlow):
@@ -114,10 +144,14 @@ class LifxOptionsFlowHandler(config_entries.OptionsFlow):
         """Manage the options."""
         if user_input is not None:
             self.updated_config = dict(current_config)
-            self.updated_config[CONF_SCAN_INTERVAL] = user_input.get(CONF_SCAN_INTERVAL)
-            self.updated_config[CONF_MSG_TIMEOUT] = user_input.get(CONF_MSG_TIMEOUT)
+            self.updated_config[CONF_DISCOVERY_INTERVAL] = user_input.get(
+                CONF_DISCOVERY_INTERVAL
+            )
+            self.updated_config[CONF_MESSAGE_TIMEOUT] = user_input.get(
+                CONF_MESSAGE_TIMEOUT
+            )
             self.updated_config[CONF_RETRY_COUNT] = user_input.get(CONF_RETRY_COUNT)
-            self.updated_config[CONF_DEV_TIMEOUT] = user_input.get(CONF_DEV_TIMEOUT)
+            self.updated_config[CONF_GRACE_PERIOD] = user_input.get(CONF_GRACE_PERIOD)
             self.hass.config_entries.async_update_entry(
                 self.config_entry, data=self.updated_config
             )
@@ -125,15 +159,15 @@ class LifxOptionsFlowHandler(config_entries.OptionsFlow):
 
         discovery_schema = {
             vol.Required(
-                CONF_SCAN_INTERVAL,
+                CONF_DISCOVERY_INTERVAL,
                 default=self.config_entry.data.get(
-                    CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                    CONF_DISCOVERY_INTERVAL, DEFAULT_DISCOVERY_INTERVAL
                 ),
             ): cv.positive_int,
             vol.Required(
-                CONF_MSG_TIMEOUT,
+                CONF_MESSAGE_TIMEOUT,
                 default=self.config_entry.data.get(
-                    CONF_MSG_TIMEOUT, DEFAULT_MSG_TIMEOUT
+                    CONF_MESSAGE_TIMEOUT, DEFAULT_MESSAGE_TIMEOUT
                 ),
             ): cv.positive_float,
             vol.Required(
@@ -143,9 +177,9 @@ class LifxOptionsFlowHandler(config_entries.OptionsFlow):
                 ),
             ): cv.positive_int,
             vol.Required(
-                CONF_DEV_TIMEOUT,
+                CONF_GRACE_PERIOD,
                 default=self.config_entry.data.get(
-                    CONF_DEV_TIMEOUT, DEFAULT_DEV_TIMEOUT
+                    CONF_GRACE_PERIOD, DEFAULT_GRACE_PERIOD
                 ),
             ): cv.positive_int,
         }

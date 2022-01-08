@@ -7,4 +7,7 @@ a new discovery method that should result in more consistent bulb detection as
 well as the ability to configure certain discovery and retry settings to
 optimize the integration for your network.
 
-See [the documentation](./info.md) for details
+It is highly recommended that logging be configured to at least `INFO` level,
+if not `DEBUG`.
+
+See [the documentation](./info.md) for details of this and more.
