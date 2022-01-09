@@ -447,6 +447,7 @@ class LIFXManager:
             if bulb.mac_addr in self.entities:
                 entity = self.entities[bulb.mac_addr]
                 entity.registered = True
+
                 _LOGGER.debug(
                     "(Entity) action=found, store=entity_registry, %s", entity.who
                 )
@@ -471,9 +472,8 @@ class LIFXManager:
         if bulb.mac_addr in self.entities:
             entity = self.entities[bulb.mac_addr]
             _LOGGER.error(
-                "(Entity) action=disabled, %s, actual_grace_period=%s",
-                entity.who,
-                entity.elapsed,
+                "(Entity) action=disabled, %s",
+                entity.who
             )
             entity.registered = False
             entity.async_write_ha_state()
