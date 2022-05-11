@@ -1,11 +1,15 @@
-# LIFX (Beta)
+# LIFX Beta for Home Assistant
+
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
 
 The LIFX Beta integration is a modified version of the core integration that allows manual configuration of certain discovery and retry values via the Home Assistant UI.
 
 ## Installation
 
 Add <https://github.com/Djelibeybi/ha-lifx-beta> to [HACS](https://hacs.xyz) as
-a custom repository and then install the Beta integration when it appears.
+[a new repository](https://hacs.xyz/docs/navigation/stores) in the _Integration_
+category. After a few moments, it should appear as a "New Repository" to be
+installed.
 
 ## Enable debug logging
 
@@ -21,16 +25,6 @@ logger:
 If you want to report an issue, please collect these logs first, then [open a GitHub issue](https://github.com/Djelibeybi/ha-lifx-beta/issues) and attach the logs. Be sure to review them first so you don't publish anything secret.
 
 If you just want to log failures, set `custom_components.lifx: info` as timeouts and disconnections are logged as warnings or errors depending on the event.
-
-## Configuration Guide
-
-The LIFX Beta integration _can only be configured via the UI_. Any configuration in `configuration.yaml` _will be ignored_. After installation, the beta will replace the built-in integration, so to restore the ability to configure via the YAML file, uninstall this beta using HACS.
-
-### Network selection and broadcasts
-
-The LIFX Beta will warn if it detects multiple interfaces that are connected to the same network. This is never a great idea and it will have an impact on the efficacy of discovery over time. In particular, check to make sure devices that are connected via wired ethernet and wifi are configured on different broadcast domains for each.
-
-If you're unsure, disable one of the interfaces either physically by unplugging it, or via Home Assistant's network configuration.
 
 ### Configuration options
 

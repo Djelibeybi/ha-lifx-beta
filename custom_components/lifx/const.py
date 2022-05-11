@@ -1,18 +1,16 @@
 """Const for LIFX."""
-from homeassistant.const import Platform
 
+CONF_BROADCAST = "broadcast"
 CONF_DISCOVERY_INTERVAL = "discovery_interval"
+CONF_DUPLICATE_DISCOVERY = "duplicate_discovery"
+CONF_GRACE_PERIOD = "grace_period"
 CONF_MESSAGE_TIMEOUT = "message_timeout"
 CONF_RETRY_COUNT = "retry_count"
-CONF_GRACE_PERIOD = "grace_period"
-
+CONF_SERVER = "server"
 DATA_LIFX_MANAGER = "lifx_manager"
-
 DEFAULT_DISCOVERY_INTERVAL = 60
-DEFAULT_MESSAGE_TIMEOUT = 0.5
-DEFAULT_RETRY_COUNT = 3
-DEFAULT_GRACE_PERIOD = 180
-
+DEFAULT_DUPLICATE_DISCOVERY = False
+DEFAULT_GRACE_PERIOD = 90
+DEFAULT_MESSAGE_TIMEOUT = 1.0
+DEFAULT_RETRY_COUNT = 8
 DOMAIN = "lifx"
-
-PLATFORMS = [Platform.LIGHT]

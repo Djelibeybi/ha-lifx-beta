@@ -1,4 +1,8 @@
 {
-    "name": "LIFX (Beta)",
-    "domains": ["light"]
+    "name": "LIFX Beta",
+    "domains": [
+        "light"
+    ],
+    "render_readme": true,
+    "homeassistant": "2022.05"
 }

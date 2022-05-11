@@ -1,15 +1,23 @@
-# THIS BETA IS NOW CLOSED. 
+# LIFX Beta for Home Assistant
 
-<!--
+This is a rolling-release/beta/preview of the things I'm developing for the
+LIFX integration for Home Assistant.
 
-This is a beta version of the built-in LIFX integration that includes
-a new discovery method that should result in more consistent bulb detection as
-well as the ability to configure certain discovery and retry settings to
-optimize the integration for your network.
+## Roadmap
 
-It is highly recommended that logging be configured to at least `INFO` level,
-if not `DEBUG`.
+If you have any suggestions for new features, or things you'd like to see
+improved, please let me know.
 
-See [the documentation](./info.md) for details of this and more.
+### Ready for testing
 
--->
+* Adjust the discovery parameters via the Home Assistant UI
+
+## Issues? Get debug logs!
+
+Before logging an issue, please enable debug logging by adding the following to your `configuration.yaml` file:
+
+```yaml
+logger:
+  logs:
+    custom_components.lifx: debug
+```

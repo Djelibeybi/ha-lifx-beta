@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "confirm": {
-        "title": "Enable LIFX integration?"
+        "title": "Do you want to set up LIFX?"
       }
     },
     "abort": {
@@ -13,13 +13,13 @@
   "options": {
     "step": {
       "discovery_options": {
-        "title": "LIFX discovery and retry settings",
-        "description": "Adjust the following settings to tune the discovery and retry intervals to best suit local network conditions and the number of active LIFX devices.",
+        "title": "Discovery options",
         "data": {
-          "discovery_interval": "Discovery interval (seconds)",
-          "retry_count": "Retry count",
-          "message_timeout": "Message reply timeout (seconds)",
-          "grace_period": "Grace period (seconds) before marked unavailable"
+          "discovery_interval": "How long (in seconds) between scans for new and previously disconnected devices?",
+          "duplicate_discovery": "Allow duplicate discovery of devices?",
+          "retry_count": "How many attempts should be made per bulb?",
+          "message_timeout": "How long (in second) to wait for a reply from the bulb?",
+          "grace_period": "How long (seconds) since the last message before taking a bulb offline?"
         }
       }
     }
