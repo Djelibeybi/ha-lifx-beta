@@ -9,6 +9,7 @@ import logging
 import math
 
 import aiolifx as aiolifx_module
+from aiolifx.aiolifx import LifxDiscovery, Light
 import aiolifx_effects as aiolifx_effects_module
 from awesomeversion import AwesomeVersion
 import voluptuous as vol
@@ -42,7 +43,6 @@ from homeassistant.const import (
     ATTR_MODE,
     ATTR_MODEL,
     ATTR_SW_VERSION,
-    CONF_PORT,
     EVENT_HOMEASSISTANT_STOP,
 )
 from homeassistant.core import HomeAssistant, ServiceCall, callback
@@ -50,32 +50,28 @@ from homeassistant.helpers import entity_platform
 import homeassistant.helpers.config_validation as cv
 import homeassistant.helpers.device_registry as dr
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddEntitiesCallback, EntityPlatform
 import homeassistant.helpers.entity_registry as er
 from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 import homeassistant.util.color as color_util
 
-from .const import (
+from . import (
     CONF_BROADCAST,
-    CONF_DISCOVERY_INTERVAL,
-    CONF_DUPLICATE_DISCOVERY,
-    CONF_GRACE_PERIOD,
-    CONF_MESSAGE_TIMEOUT,
-    CONF_RETRY_COUNT,
+    CONF_PORT,
     CONF_SERVER,
     DATA_LIFX_MANAGER,
-    DEFAULT_DISCOVERY_INTERVAL,
-    DEFAULT_DUPLICATE_DISCOVERY,
-    DEFAULT_GRACE_PERIOD,
-    DEFAULT_MESSAGE_TIMEOUT,
-    DEFAULT_RETRY_COUNT,
     DOMAIN as LIFX_DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 SCAN_INTERVAL = timedelta(seconds=10)
+
+DISCOVERY_INTERVAL = 10
+MESSAGE_TIMEOUT = 0.5
+MESSAGE_RETRIES = 8
+UNAVAILABLE_GRACE = 90
 
 FIX_MAC_FW = AwesomeVersion("3.70")
 SWITCH_PRODUCT_IDS = [70, 71, 89]
@@ -261,36 +257,27 @@ def merge_hsbk(base, change):
 class LIFXManager:
     """Representation of all known LIFX entities."""
 
-    def __init__(self, hass, platform, config_entry, async_add_entities):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        platform: EntityPlatform,
+        config_entry: ConfigEntry,
+        async_add_entities: AddEntitiesCallback,
+    ) -> None:
         """Initialize the light."""
-        self.entities = {}
-        self.discoveries_inflight = {}
+        self.entities: dict[str, LIFXLight] = {}
+        self.switch_devices: list[str] = []
         self.hass = hass
         self.platform = platform
         self.config_entry = config_entry
         self.async_add_entities = async_add_entities
         self.effects_conductor = aiolifx_effects().Conductor(hass.loop)
-        self.discoveries = []
+        self.discoveries: list[LifxDiscovery] = []
         self.cleanup_unsub = self.hass.bus.async_listen(
             EVENT_HOMEASSISTANT_STOP, self.cleanup
         )
         self.entity_registry_updated_unsub = self.hass.bus.async_listen(
             er.EVENT_ENTITY_REGISTRY_UPDATED, self.entity_registry_updated
-        )
-        self._discovery_interval = config_entry.options.get(
-            CONF_DISCOVERY_INTERVAL, DEFAULT_DISCOVERY_INTERVAL
-        )
-        self._duplicate_discovery = config_entry.options.get(
-            CONF_DUPLICATE_DISCOVERY, DEFAULT_DUPLICATE_DISCOVERY
-        )
-        self._grace_period = config_entry.options.get(
-            CONF_GRACE_PERIOD, DEFAULT_GRACE_PERIOD
-        )
-        self._message_timeout = config_entry.options.get(
-            CONF_MESSAGE_TIMEOUT, DEFAULT_MESSAGE_TIMEOUT
-        )
-        self._retry_count = config_entry.options.get(
-            CONF_RETRY_COUNT, DEFAULT_RETRY_COUNT
         )
 
         self.register_set_state()
@@ -298,7 +285,7 @@ class LIFXManager:
 
     def start_discovery(self, interface):
         """Start discovery on a network interface."""
-        kwargs = {"discovery_interval": self._discovery_interval}
+        kwargs = {"discovery_interval": DISCOVERY_INTERVAL}
         if broadcast_ip := interface.get(CONF_BROADCAST):
             kwargs["broadcast_ip"] = broadcast_ip
         lifx_discovery = aiolifx().LifxDiscovery(self.hass.loop, self, **kwargs)
@@ -398,75 +385,65 @@ class LIFXManager:
             await self.effects_conductor.stop(bulbs)
 
     @callback
-    def register(self, bulb):
+    def register(self, bulb: Light) -> None:
         """Allow a single in-flight discovery per bulb."""
-        if bulb.mac_addr not in self.discoveries_inflight:
-            self.discoveries_inflight[bulb.mac_addr] = bulb.ip_addr
-            _LOGGER.debug("Discovered %s (%s)", bulb.ip_addr, bulb.mac_addr)
-            self.hass.async_create_task(self.register_bulb(bulb))
-        else:
-            _LOGGER.warning(
-                "Duplicate LIFX discovery response from %s (%s) detected",
-                bulb.mac_addr,
-                bulb.ip_addr,
-            )
-            if self._duplicate_discovery is True:
-                self.hass.async_create_task(self.register_bulb(bulb))
+        if bulb.mac_addr not in self.switch_devices:
+            self.hass.async_create_task(self._handle_discovery(bulb))
 
-    async def register_bulb(self, bulb):
+    async def _handle_discovery(self, bulb: Light) -> None:
         """Handle LIFX bulb registration lifecycle."""
-        if bulb.mac_addr in self.entities:
-            entity = self.entities[bulb.mac_addr]
+        if entity := self.entities.get(bulb.mac_addr):
             entity.registered = True
             _LOGGER.debug("Reconnected to %s", entity.who)
             await entity.update_hass()
-        else:
-            _LOGGER.debug("Connecting to %s (%s)", bulb.ip_addr, bulb.mac_addr)
+            return
 
-            # Read initial state
-            ack = AwaitAioLIFX().wait
-
-            # Get the product info first so that LIFX Switches
-            # can be ignored.
-            version_resp = await ack(bulb.get_version)
+        # Don't process LIFX Switch devices and ignore them in future
+        if bulb.version is None:
+            version_resp = await AwaitAioLIFX().wait(bulb.get_version)
             if version_resp and bulb.product in SWITCH_PRODUCT_IDS:
+                self.switch_devices.append(bulb.mac_addr)
                 _LOGGER.debug(
-                    "Not connecting to LIFX Switch %s (%s)",
+                    "Adding LIFX Switch %s (%s) to ignore list",
                     str(bulb.mac_addr).replace(":", ""),
                     bulb.ip_addr,
                 )
-                return False
+                return
 
-            color_resp = await ack(bulb.get_color)
+        await self._async_process_discovery(bulb)
 
-            if color_resp is None or version_resp is None:
-                _LOGGER.error("Failed to connect to %s", bulb.ip_addr)
-                if bulb.mac_addr in self.discoveries_inflight:
-                    self.discoveries_inflight.pop(bulb.mac_addr)
-                bulb.registered = False
-            else:
-                bulb.timeout = self._message_timeout
-                bulb.retry_count = self._retry_count
-                bulb.unregister_timeout = self._grace_period
+    async def _async_process_discovery(self, bulb: Light) -> None:
+        """Process discovery of a device."""
+        _LOGGER.debug("Connecting to %s (%s)", bulb.ip_addr, bulb.mac_addr)
 
-                if lifx_features(bulb)["multizone"]:
-                    entity = LIFXStrip(bulb, self.effects_conductor)
-                elif lifx_features(bulb)["color"]:
-                    entity = LIFXColor(bulb, self.effects_conductor)
-                else:
-                    entity = LIFXWhite(bulb, self.effects_conductor)
+        # Read initial state
+        ack = AwaitAioLIFX().wait
 
-                _LOGGER.debug("Connected to %s", entity.who)
-                self.entities[bulb.mac_addr] = entity
-                self.discoveries_inflight.pop(bulb.mac_addr, None)
-                self.async_add_entities([entity], True)
+        color_resp = await ack(bulb.get_color)
+
+        if color_resp is None:
+            _LOGGER.error("Failed to connect to %s", bulb.ip_addr)
+            bulb.registered = False
+            return
+
+        bulb.timeout = MESSAGE_TIMEOUT
+        bulb.retry_count = MESSAGE_RETRIES
+        bulb.unregister_timeout = UNAVAILABLE_GRACE
+
+        if lifx_features(bulb)["multizone"]:
+            entity: LIFXLight = LIFXStrip(bulb, self.effects_conductor)
+        elif lifx_features(bulb)["color"]:
+            entity = LIFXColor(bulb, self.effects_conductor)
+        else:
+            entity = LIFXWhite(bulb, self.effects_conductor)
+
+        _LOGGER.debug("Connected to %s", entity.who)
+        self.entities[bulb.mac_addr] = entity
+        self.async_add_entities([entity], True)
 
     @callback
-    def unregister(self, bulb):
+    def unregister(self, bulb: Light) -> None:
         """Disconnect and unregister non-responsive bulbs."""
-        if bulb.mac_addr in self.discoveries_inflight:
-            self.discoveries_inflight.pop(bulb.mac_addr)
-
         if bulb.mac_addr in self.entities:
             entity = self.entities[bulb.mac_addr]
             _LOGGER.debug("Disconnected from %s", entity.who)
@@ -536,7 +513,9 @@ class LIFXLight(LightEntity):
 
     _attr_supported_features = LightEntityFeature.TRANSITION | LightEntityFeature.EFFECT
 
-    def __init__(self, bulb, effects_conductor):
+    def __init__(
+        self, bulb: Light, effects_conductor: aiolifx_effects_module.Conductor
+    ) -> None:
         """Initialize the light."""
         self.bulb = bulb
         self.effects_conductor = effects_conductor

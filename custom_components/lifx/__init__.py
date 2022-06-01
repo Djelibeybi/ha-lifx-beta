@@ -9,7 +9,10 @@ from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
-from .const import CONF_BROADCAST, CONF_SERVER, DATA_LIFX_MANAGER, DOMAIN
+from .const import DOMAIN
+
+CONF_SERVER = "server"
+CONF_BROADCAST = "broadcast"
 
 INTERFACE_SCHEMA = vol.Schema(
     {
@@ -23,6 +26,8 @@ CONFIG_SCHEMA = vol.Schema(
     {DOMAIN: {LIGHT_DOMAIN: vol.Schema(vol.All(cv.ensure_list, [INTERFACE_SCHEMA]))}},
     extra=vol.ALLOW_EXTRA,
 )
+
+DATA_LIFX_MANAGER = "lifx_manager"
 
 PLATFORMS = [Platform.LIGHT]
 
