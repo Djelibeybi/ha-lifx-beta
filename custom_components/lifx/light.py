@@ -74,8 +74,6 @@ MESSAGE_RETRIES = 8
 UNAVAILABLE_GRACE = 90
 
 FIX_MAC_FW = AwesomeVersion("3.70")
-SWITCH_PRODUCT_IDS = [70, 71, 89]
-
 SERVICE_LIFX_SET_STATE = "set_state"
 
 ATTR_INFRARED = "infrared"
@@ -401,7 +399,7 @@ class LIFXManager:
         # Don't process LIFX Switch devices and ignore them in future
         if bulb.version is None:
             version_resp = await AwaitAioLIFX().wait(bulb.get_version)
-            if version_resp and bulb.product in SWITCH_PRODUCT_IDS:
+            if version_resp and lifx_features(bulb)["relays"]:
                 self.switch_devices.append(bulb.mac_addr)
                 _LOGGER.debug(
                     "Adding LIFX Switch %s (%s) to ignore list",

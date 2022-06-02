@@ -2,9 +2,9 @@
   "domain": "lifx",
   "name": "LIFX",
   "config_flow": true,
-  "version": "2022.06.01",
+  "version": "2022.06.02",
   "documentation": "https://www.home-assistant.io/integrations/lifx",
-  "requirements": ["aiolifx==0.7.1", "aiolifx_effects==0.2.2"],
+  "requirements": ["aiolifx==0.8.1", "aiolifx_effects==0.2.2"],
   "dependencies": ["network"],
   "homekit": {
     "models": [

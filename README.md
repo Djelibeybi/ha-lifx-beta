@@ -1,23 +1,33 @@
 # LIFX Beta for Home Assistant
 
-This is a rolling-release/beta/preview of the things I'm developing for the
-LIFX integration for Home Assistant.
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
 
-## Roadmap
+The LIFX Beta integration is a where I test things before they get merged into the core LIFX integration.
 
-If you have any suggestions for new features, or things you'd like to see
-improved, please let me know.
+Currently testing the proposed changes for <https://github.com/home-assistant/core/pull/72213>
 
-### Ready for testing
+## Installation
 
-* Adjust the discovery parameters via the Home Assistant UI
+Add <https://github.com/Djelibeybi/ha-lifx-beta> to [HACS](https://hacs.xyz) as
+[a new repository](https://hacs.xyz/docs/navigation/stores) in the _Integration_
+category. After a few moments, it should appear as a "New Repository" to be
+installed.
 
-## Issues? Get debug logs!
+## Enable debug logging
 
-Before logging an issue, please enable debug logging by adding the following to your `configuration.yaml` file:
+
+Adjust your `logger` settings in `configuration.yaml` to enable `debug` for `custom_components.lifx`:
 
 ```yaml
 logger:
+  default: info
   logs:
     custom_components.lifx: debug
 ```
+
+If you want to report an issue, please collect some debug logs first, then [open a GitHub issue](https://github.com/Djelibeybi/ha-lifx-beta/issues)
+and attach the logs. Be sure to review them first so you don't publish anything secret.
+
+## Further documentation
+
+See the [LIFX documentation on the Home Assistant website](https://www.home-assistant.io/integrations/lifx).
