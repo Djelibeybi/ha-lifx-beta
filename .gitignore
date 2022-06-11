@@ -74,8 +74,8 @@ test-output.xml
 .mr.developer.cfg
 .project
 .pydevproject
-
 .python-version
+.patch
 
 # emacs auto backups
 *~

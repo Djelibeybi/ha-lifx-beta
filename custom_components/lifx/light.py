@@ -414,9 +414,7 @@ class LIFXManager:
 
     def clear_inflight_discovery(self, inflight: InFlightDiscovery) -> None:
         """Clear in-flight discovery."""
-
-        if inflight.device.mac_addr in self.discoveries_inflight:
-            self.discoveries_inflight.pop(inflight.device.mac_addr)
+        self.discoveries_inflight.pop(inflight.device.mac_addr, None)
 
     @callback
     def register(self, bulb: Light) -> None:
@@ -429,11 +427,18 @@ class LIFXManager:
             )
             return
 
+        # Try to bail out of discovery as early as possible
+        if bulb.mac_addr in self.entities:
+            entity = self.entities[bulb.mac_addr]
+            entity.registered = True
+            _LOGGER.debug("Reconnected to %s", entity.who)
+            return
+
         if bulb.mac_addr not in self.discoveries_inflight:
             inflight = InFlightDiscovery(bulb, asyncio.Lock())
             self.discoveries_inflight[bulb.mac_addr] = inflight
             _LOGGER.debug(
-                "Discovery response received from %s (%s)",
+                "First discovery response received from %s (%s)",
                 bulb.ip_addr,
                 bulb.mac_addr,
             )
@@ -453,6 +458,15 @@ class LIFXManager:
 
         # only allow a single discovery process per discovered device
         async with inflight.lock:
+
+            # Bail out if an entity was created by a previous discovery while
+            # this discovery was waiting for the asyncio lock to release.
+            if inflight.device.mac_addr in self.entities:
+                self.clear_inflight_discovery(inflight)
+                entity: LIFXLight = self.entities[inflight.device.mac_addr]
+                entity.registered = True
+                _LOGGER.debug("Reconnected to %s", entity.who)
+                return
 
             # Determine the product info so that LIFX Switches
             # can be skipped.
@@ -476,13 +490,6 @@ class LIFXManager:
                 )
                 self.switch_devices.append(inflight.device.mac_addr)
                 self.clear_inflight_discovery(inflight)
-                return
-
-            if entity := self.entities.get(inflight.device.mac_addr):
-                self.clear_inflight_discovery(inflight)
-                entity.registered = True
-                await entity.update_hass()
-                _LOGGER.debug("Reconnected to %s", entity.who)
                 return
 
             await self._async_process_discovery(inflight=inflight)
@@ -509,11 +516,11 @@ class LIFXManager:
                 return
 
         if lifx_features(bulb)["multizone"]:
-            entity: LIFXLight = LIFXStrip(bulb, self.effects_conductor)
+            entity: LIFXLight = LIFXStrip(bulb.mac_addr, bulb, self.effects_conductor)
         elif lifx_features(bulb)["color"]:
-            entity = LIFXColor(bulb, self.effects_conductor)
+            entity = LIFXColor(bulb.mac_addr, bulb, self.effects_conductor)
         else:
-            entity = LIFXWhite(bulb, self.effects_conductor)
+            entity = LIFXWhite(bulb.mac_addr, bulb, self.effects_conductor)
 
         self.entities[bulb.mac_addr] = entity
         self.async_add_entities([entity], True)
@@ -593,9 +600,13 @@ class LIFXLight(LightEntity):
     _attr_supported_features = LightEntityFeature.TRANSITION | LightEntityFeature.EFFECT
 
     def __init__(
-        self, bulb: Light, effects_conductor: aiolifx_effects_module.Conductor
+        self,
+        mac_addr: str,
+        bulb: Light,
+        effects_conductor: aiolifx_effects_module.Conductor,
     ) -> None:
         """Initialize the light."""
+        self.mac_addr = mac_addr
         self.bulb = bulb
         self.effects_conductor = effects_conductor
         self.registered = True
@@ -608,10 +619,10 @@ class LIFXLight(LightEntity):
             self.bulb.host_firmware_version
             and AwesomeVersion(self.bulb.host_firmware_version) >= FIX_MAC_FW
         ):
-            octets = [int(octet, 16) for octet in self.bulb.mac_addr.split(":")]
+            octets = [int(octet, 16) for octet in self.mac_addr.split(":")]
             octets[5] = (octets[5] + 1) % 256
             return ":".join(f"{octet:02x}" for octet in octets)
-        return self.bulb.mac_addr
+        return self.mac_addr
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -640,7 +651,7 @@ class LIFXLight(LightEntity):
     @property
     def unique_id(self):
         """Return a unique ID."""
-        return self.bulb.mac_addr
+        return self.mac_addr
 
     @property
     def name(self):
@@ -650,7 +661,7 @@ class LIFXLight(LightEntity):
     @property
     def who(self):
         """Return a string identifying the bulb by name and mac."""
-        return f"{self.name} ({self.bulb.mac_addr})"
+        return f"{self.name} ({self.mac_addr})"
 
     @property
     def min_mireds(self):
