@@ -169,7 +169,7 @@ hev_cycle:
         boolean:
     duration:
       name: Duration
-      description: Duration of cleaning cycle. If unset, uses the default time of 2 hours.
+      description: Duration of cleaning cycle in seconds. If unset, uses the default time of 2 hours.
       selector:
         number:
           min: 0
