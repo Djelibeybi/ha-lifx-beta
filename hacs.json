@@ -1,8 +1,12 @@
 {
     "name": "LIFX Beta",
     "domains": [
-        "light"
+        "binary_sensor",
+        "button",
+        "light",
+        "select",
+        "sensor"
     ],
     "render_readme": true,
-    "homeassistant": "2022.05"
+    "homeassistant": "2022.11"
 }
