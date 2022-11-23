@@ -2,9 +2,19 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
 
-The LIFX Beta integration is a where I test things before they get merged into the core LIFX integration.
+**WARNING**: This is an unstable release. Do not install in a live or production
+system.
 
-Currently testing the proposed changes for <https://github.com/home-assistant/core/pull/72213>
+This is a pre-release/testing version of the core LIFX integration. This repo
+exists purely to make it easier to install the test version via HACS instead of
+having to do it manually.
+
+**WARNING**: if you prefer stability, do not install this custom component.
+
+This custom component uses a different mechanism for initial bulb configuration
+as well as a different approach to regular updates from each device. The goal
+is to try and find the most reliable way of updating all devices without any
+timeouts (or as few as possible).
 
 ## Installation
 
@@ -14,7 +24,6 @@ category. After a few moments, it should appear as a "New Repository" to be
 installed.
 
 ## Enable debug logging
-
 
 Adjust your `logger` settings in `configuration.yaml` to enable `debug` for `custom_components.lifx`:
 
