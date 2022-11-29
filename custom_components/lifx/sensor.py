@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from awesomeversion import AwesomeVersion
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -10,6 +11,10 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import (
+    SIGNAL_STRENGTH_DECIBELS,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -19,6 +24,8 @@ from .coordinator import LIFXUpdateCoordinator
 from .entity import LIFXEntity
 
 SCAN_INTERVAL = timedelta(seconds=30)
+RSSI_DBM_FW = AwesomeVersion("2.77")
+
 
 RSSI_SENSOR = SensorEntityDescription(
     key=ATTR_RSSI,
@@ -54,7 +61,14 @@ class LIFXRssiSensor(LIFXEntity, SensorEntity):
         self.entity_description = description
         self._attr_name = description.name
         self._attr_unique_id = f"{coordinator.serial_number}_{description.key}"
-        self._attr_native_unit_of_measurement = coordinator.rssi_uom
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        """Return native unit of measurement."""
+        if AwesomeVersion(self.bulb.host_firmware_version) <= RSSI_DBM_FW:
+            return SIGNAL_STRENGTH_DECIBELS
+
+        return SIGNAL_STRENGTH_DECIBELS_MILLIWATT
 
     @callback
     def _handle_coordinator_update(self) -> None:

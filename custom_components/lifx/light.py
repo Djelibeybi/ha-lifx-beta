@@ -47,7 +47,14 @@ from .manager import (
     SERVICE_EFFECT_STOP,
     LIFXManager,
 )
-from .util import convert_8_to_16, convert_16_to_8, find_hsbk, lifx_features, merge_hsbk
+from .util import (
+    convert_8_to_16,
+    convert_16_to_8,
+    find_hsbk,
+    lifx_features,
+    merge_hsbk,
+    async_execute_lifx,
+)
 
 LIFX_STATE_SETTLE_DELAY = 0.3
 
@@ -206,7 +213,7 @@ class LIFXLight(LIFXEntity, LightEntity):
     async def set_state(self, **kwargs: Any) -> None:
         """Set a color on the light and turn it on/off."""
         self.coordinator.async_set_updated_data(None)
-        async with self.coordinator.lock:
+        async with self.coordinator.limit:
             # Cancel any pending refreshes
             bulb = self.bulb
 
@@ -221,7 +228,10 @@ class LIFXLight(LIFXEntity, LightEntity):
                     Platform.SELECT, INFRARED_BRIGHTNESS
                 )
                 _LOGGER.warning(
-                    "The 'infrared' attribute of 'lifx.set_state' is deprecated: call 'select.select_option' targeting '%s' instead",
+                    """
+                    The 'infrared' attribute of 'lifx.set_state' is deprecated:
+                    call 'select.select_option' targeting '%s' instead
+                    """,
                     infrared_entity_id,
                 )
                 bulb.set_infrared(convert_8_to_16(kwargs[ATTR_INFRARED]))
@@ -271,9 +281,7 @@ class LIFXLight(LIFXEntity, LightEntity):
                 "This device does not support setting HEV cycle state"
             )
 
-        await self.coordinator.async_set_hev_cycle_state(
-            power, duration or 0
-        )
+        await self.coordinator.async_set_hev_cycle_state(power, duration or 0)
         await self.update_during_transition(duration or 0)
 
     async def set_power(
@@ -304,12 +312,8 @@ class LIFXLight(LIFXEntity, LightEntity):
         self,
     ) -> None:
         """Send a get color message to the bulb."""
-        try:
-            await self.coordinator.async_get_color()
-        except asyncio.TimeoutError as ex:
-            raise HomeAssistantError(
-                f"Timeout setting getting color for {self.name}"
-            ) from ex
+        async with self.coordinator.limit:
+            await async_execute_lifx(self.bulb.get_color)
 
     async def default_effect(self, **kwargs: Any) -> None:
         """Start an effect with default parameters."""
@@ -451,7 +455,8 @@ class LIFXExtendedMultiZone(LIFXMultiZone):
         """Set colors on all zones of the device."""
 
         # trigger an update of all zone values before merging new values
-        await self.coordinator.async_get_extended_color_zones()
+        async with self.coordinator.limit:
+            await async_execute_lifx(self.bulb.get_extended_color_zones)
 
         color_zones = self.bulb.color_zones
         if (zones := kwargs.get(ATTR_ZONES)) is None:

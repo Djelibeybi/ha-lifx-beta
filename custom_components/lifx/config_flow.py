@@ -5,10 +5,7 @@ import asyncio
 import socket
 from typing import Any
 
-from aiolifx.aiolifx import Light
-from aiolifx.message import Message
-from aiolifx.msgtypes import StateHostFirmware, StateLabel, StateVersion
-from aiolifx.products import features_map
+from aiolifx.aiolifx import Light, product_map
 from aiolifx.connection import LIFXConnection
 import voluptuous as vol
 
@@ -34,7 +31,7 @@ from .util import (
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for tplink."""
+    """Handle a config flow for LIFX."""
 
     VERSION = 1
 
@@ -44,7 +41,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._discovered_device: Light | None = None
 
     async def async_step_dhcp(self, discovery_info: DhcpServiceInfo) -> FlowResult:
-        """Handle discovery via dhcp."""
+        """Handle discovery via DHCP."""
         mac = discovery_info.macaddress
         host = discovery_info.ip
         hass = self.hass
@@ -73,8 +70,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_integration_discovery(
         self, discovery_info: DiscoveryInfoType
     ) -> FlowResult:
-        """Handle discovery."""
-        #_LOGGER.debug("async_step_integration_discovery %s", discovery_info)
+        """Handle LIFX UDP broadcast discovery."""
         serial = discovery_info[CONF_SERIAL]
         host = discovery_info[CONF_HOST]
         await self.async_set_unique_id(formatted_serial(serial))
@@ -85,7 +81,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, host: str, serial: str | None = None
     ) -> FlowResult:
         """Handle any discovery."""
-        #_LOGGER.debug("Discovery %s %s", host, serial)
         self._async_abort_entries_match({CONF_HOST: host})
         self.context[CONF_HOST] = host
         if any(
@@ -124,10 +119,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         assert self._discovered_device is not None
         discovered = self._discovered_device
         _LOGGER.debug(
-            "Confirming discovery: %s on %s with serial %s",
+            "Found: %s [%s] [%s] [%s]",
             discovered.label,
+            product_map[discovered.product],
+            str(self.unique_id).replace(":", ""),
             discovered.ip_addr,
-            self.unique_id,
         )
         if user_input is not None or self._async_discovered_pending_migration():
             return self._async_create_entry_from_device(discovered)
@@ -137,7 +133,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         placeholders = {
             "label": discovered.label,
             "host": discovered.ip_addr,
-            "serial": self.unique_id,
+            "serial": str(self.unique_id).replace(":", ""),
         }
         self.context["title_placeholders"] = placeholders
         return self.async_show_form(
@@ -227,28 +223,27 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return None
         device: Light = connection.device
         try:
-            messages: list[Message] = await asyncio.gather(
-                *[
+            await asyncio.wait(
+                [
                     async_execute_lifx(device.get_hostfirmware),
                     async_execute_lifx(device.get_version),
                     async_execute_lifx(device.get_label),
-                ]
+                ],
+                timeout=15,
+                return_when=asyncio.ALL_COMPLETED,
             )
-            assert isinstance(messages[0], StateHostFirmware)
-            assert isinstance(messages[1], StateVersion)
-            assert isinstance(messages[2], StateLabel)
         except asyncio.TimeoutError:
             return None
         finally:
             connection.async_stop()
         if (
             lifx_features(device)["relays"] is True
-            or features_map[messages[1].product]["relays"] is True
             or device.host_firmware_version is None
         ):
             return None  # relays not supported
+        if serial is not None and device.mac_addr != serial:
+            return None
         # device.mac_addr is not the mac_address, its the serial number
-        device.mac_addr = serial or messages[0].target_addr
         await self.async_set_unique_id(
             formatted_serial(device.mac_addr), raise_on_progress=raise_on_progress
         )
