@@ -1,15 +1,14 @@
 {
   "domain": "lifx",
   "name": "LIFX",
-  "version": "2022.11.0-dev",
+  "version": "2022.12.0b1",
   "config_flow": true,
-  "documentation": "https://www.home-assistant.io/integrations/lifx",
+  "documentation": "https://github.com/Djelibeybi/ha-lifx-beta",
   "requirements": [
     "aiolifx==0.8.7",
     "aiolifx_effects==0.3.0",
     "aiolifx_themes==0.2.0"
   ],
-  "quality_scale": "platinum",
   "dependencies": ["network"],
   "homekit": {
     "models": [

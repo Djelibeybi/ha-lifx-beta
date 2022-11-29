@@ -1,6 +1,6 @@
 /config
 config2/*
-
+clean.sh
 tests/testing_config/deps
 tests/testing_config/home-assistant.log*
 
