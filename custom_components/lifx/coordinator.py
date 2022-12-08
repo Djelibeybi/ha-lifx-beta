@@ -74,7 +74,7 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
         self.device = connection.device
         self._update_rssi: bool = False
         self.rssi: int = 0
-        self.limit = asyncio.Semaphore(30)
+        self.lock = asyncio.Lock()
         self.active_effect = FirmwareEffect.OFF
         self.last_used_theme: str = ""
 
@@ -191,9 +191,11 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
             tasks.append(async_execute_lifx(self.device.get_label))
 
         if len(tasks) > 0:
-            messages: list[Message] = await asyncio.gather(*tasks)
-            if None in messages:
-                raise UpdateFailed(f"Update failed for {self.device.label}")
+            async with self.lock:
+                messages: list[Message] = await asyncio.gather(*tasks)
+
+                if None in messages:
+                    raise UpdateFailed(f"Update failed for {self.device.label}")
 
     async def _async_update_data(self) -> None:
         """Fetch all device data from the api."""
@@ -220,14 +222,15 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
         if self._update_rssi is True:
             tasks.append(async_execute_lifx(self.device.get_wifiinfo))
 
-        messages: list[Message] = await asyncio.gather(*tasks)
-        for message in messages:
-            if message is None:
-                raise UpdateFailed(
-                    f"Failed to receive reply from {self.device.label} ({self.device.ip_addr})"
-                )
-            elif isinstance(message, StateWifiInfo):
-                self.rssi = signal_to_rssi(message.signal)
+        async with self.lock:
+            messages: list[Message] = await asyncio.gather(*tasks)
+            for message in messages:
+                if message is None:
+                    raise UpdateFailed(
+                        f"Failed to receive reply from {self.device.label} ({self.device.ip_addr})"
+                    )
+                elif isinstance(message, StateWifiInfo):
+                    self.rssi = signal_to_rssi(message.signal)
 
         if lifx_features(self.device)["multizone"]:
             self.active_effect = FirmwareEffect[self.device.effect.get("effect", "OFF")]
