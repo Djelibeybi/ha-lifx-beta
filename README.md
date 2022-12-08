@@ -11,11 +11,9 @@ having to do it manually.
 
 **WARNING**: if you prefer stability, do not install this custom component.
 
-## Current build: `2022.12.0b1`
+## Current build: `2022.12.2`
 
-> _You will need to enable beta versions in HACS to see the latest release._
-
-It's best to run LIFX Beta `2022.12.0b1` with Home Assistant `2022.12.0`.
+It's best to run LIFX Beta `2022.12.2` with Home Assistant `2022.12.0`.
 Using this build with Home Assistant 2022.11.0 or older is more likely
 to result in your LIFX lights becoming unavailable.
 
