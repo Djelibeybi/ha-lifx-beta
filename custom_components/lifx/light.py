@@ -213,61 +213,61 @@ class LIFXLight(LIFXEntity, LightEntity):
     async def set_state(self, **kwargs: Any) -> None:
         """Set a color on the light and turn it on/off."""
         self.coordinator.async_set_updated_data(None)
-        async with self.coordinator.limit:
-            # Cancel any pending refreshes
-            bulb = self.bulb
 
-            await self.effects_conductor.stop([bulb])
+        # Cancel any pending refreshes
+        bulb = self.bulb
 
-            if ATTR_EFFECT in kwargs:
-                await self.default_effect(**kwargs)
-                return
+        await self.effects_conductor.stop([bulb])
 
-            if ATTR_INFRARED in kwargs:
-                infrared_entity_id = self.coordinator.async_get_entity_id(
-                    Platform.SELECT, INFRARED_BRIGHTNESS
-                )
-                _LOGGER.warning(
-                    """
-                    The 'infrared' attribute of 'lifx.set_state' is deprecated:
-                    call 'select.select_option' targeting '%s' instead
-                    """,
-                    infrared_entity_id,
-                )
-                bulb.set_infrared(convert_8_to_16(kwargs[ATTR_INFRARED]))
+        if ATTR_EFFECT in kwargs:
+            await self.default_effect(**kwargs)
+            return
 
-            if ATTR_TRANSITION in kwargs:
-                fade = int(kwargs[ATTR_TRANSITION] * 1000)
-            else:
-                fade = 0
+        if ATTR_INFRARED in kwargs:
+            infrared_entity_id = self.coordinator.async_get_entity_id(
+                Platform.SELECT, INFRARED_BRIGHTNESS
+            )
+            _LOGGER.warning(
+                """
+                The 'infrared' attribute of 'lifx.set_state' is deprecated:
+                call 'select.select_option' targeting '%s' instead
+                """,
+                infrared_entity_id,
+            )
+            bulb.set_infrared(convert_8_to_16(kwargs[ATTR_INFRARED]))
 
-            # These are both False if ATTR_POWER is not set
-            power_on = kwargs.get(ATTR_POWER, False)
-            power_off = not kwargs.get(ATTR_POWER, True)
+        if ATTR_TRANSITION in kwargs:
+            fade = int(kwargs[ATTR_TRANSITION] * 1000)
+        else:
+            fade = 0
 
-            hsbk = find_hsbk(self.hass, **kwargs)
+        # These are both False if ATTR_POWER is not set
+        power_on = kwargs.get(ATTR_POWER, False)
+        power_off = not kwargs.get(ATTR_POWER, True)
 
-            if not self.is_on:
-                if power_off:
-                    await self.set_power(False)
-                # If fading on with color, set color immediately
-                if hsbk and power_on:
-                    await self.set_color(hsbk, kwargs)
-                    await self.set_power(True, duration=fade)
-                elif hsbk:
-                    await self.set_color(hsbk, kwargs, duration=fade)
-                elif power_on:
-                    await self.set_power(True, duration=fade)
-            else:
-                if power_on:
-                    await self.set_power(True)
-                if hsbk:
-                    await self.set_color(hsbk, kwargs, duration=fade)
-                if power_off:
-                    await self.set_power(False, duration=fade)
+        hsbk = find_hsbk(self.hass, **kwargs)
 
-            # Avoid state ping-pong by holding off updates as the state settles
-            await asyncio.sleep(LIFX_STATE_SETTLE_DELAY)
+        if not self.is_on:
+            if power_off:
+                await self.set_power(False)
+            # If fading on with color, set color immediately
+            if hsbk and power_on:
+                await self.set_color(hsbk, kwargs)
+                await self.set_power(True, duration=fade)
+            elif hsbk:
+                await self.set_color(hsbk, kwargs, duration=fade)
+            elif power_on:
+                await self.set_power(True, duration=fade)
+        else:
+            if power_on:
+                await self.set_power(True)
+            if hsbk:
+                await self.set_color(hsbk, kwargs, duration=fade)
+            if power_off:
+                await self.set_power(False, duration=fade)
+
+        # Avoid state ping-pong by holding off updates as the state settles
+        await asyncio.sleep(LIFX_STATE_SETTLE_DELAY)
 
         # Update when the transition starts and ends
         await self.update_during_transition(fade)
@@ -312,8 +312,7 @@ class LIFXLight(LIFXEntity, LightEntity):
         self,
     ) -> None:
         """Send a get color message to the bulb."""
-        async with self.coordinator.limit:
-            await async_execute_lifx(self.bulb.get_color)
+        await async_execute_lifx(self.bulb.get_color)
 
     async def default_effect(self, **kwargs: Any) -> None:
         """Start an effect with default parameters."""
@@ -421,14 +420,10 @@ class LIFXMultiZone(LIFXColor):
         for index, zone in enumerate(zones):
             zone_hsbk = merge_hsbk(color_zones[zone], hsbk)
             apply = 1 if (index == len(zones) - 1) else 0
-            try:
-                await self.coordinator.async_set_color_zones(
-                    zone, zone, zone_hsbk, duration, apply
-                )
-            except asyncio.TimeoutError as ex:
-                raise HomeAssistantError(
-                    f"Timeout setting color zones for {self.name}"
-                ) from ex
+            await self.coordinator.async_set_color_zones(
+                zone, zone, zone_hsbk, duration, apply
+            )
+
 
         # set_color_zones does not update the
         # state of the device, so we need to do that
@@ -438,12 +433,7 @@ class LIFXMultiZone(LIFXColor):
         self,
     ) -> None:
         """Send a get color zones message to the device."""
-        try:
-            await self.coordinator.async_get_color_zones()
-        except asyncio.TimeoutError as ex:
-            raise HomeAssistantError(
-                f"Timeout getting color zones from {self.name}"
-            ) from ex
+        await self.coordinator.async_get_color_zones()
 
 
 class LIFXExtendedMultiZone(LIFXMultiZone):
@@ -455,8 +445,7 @@ class LIFXExtendedMultiZone(LIFXMultiZone):
         """Set colors on all zones of the device."""
 
         # trigger an update of all zone values before merging new values
-        async with self.coordinator.limit:
-            await async_execute_lifx(self.bulb.get_extended_color_zones)
+        await async_execute_lifx(self.bulb.get_extended_color_zones)
 
         color_zones = self.bulb.color_zones
         if (zones := kwargs.get(ATTR_ZONES)) is None:
@@ -470,14 +459,9 @@ class LIFXExtendedMultiZone(LIFXMultiZone):
                     color_zones[index] = merge_hsbk(zone, hsbk)
 
         # send the updated color zones list to the device
-        try:
-            await self.coordinator.async_set_extended_color_zones(
-                color_zones, duration=duration
-            )
-        except asyncio.TimeoutError as ex:
-            raise HomeAssistantError(
-                f"Timeout setting color zones on {self.name}"
-            ) from ex
+        await self.coordinator.async_set_extended_color_zones(
+            color_zones, duration=duration
+        )
 
         # set_extended_color_zones does not update the
         # state of the device, so we need to do that

@@ -10,22 +10,7 @@ from typing import Any
 from aiolifx import products
 from aiolifx.aiolifx import Light
 from aiolifx.message import Message
-from aiolifx.msgtypes import (
-    Acknowledgement,
-    LightState,
-    LightStateInfrared,
-    MultiZoneDirection,
-    MultiZoneEffectType,
-    MultiZoneStateExtendedColorZones,
-    MultiZoneStateMultiZone,
-    MultiZoneStateMultiZoneEffect,
-    StateGroup,
-    StateHevCycle,
-    StateHostFirmware,
-    StateLabel,
-    StateVersion,
-    StateWifiInfo,
-)
+
 import async_timeout
 from awesomeversion import AwesomeVersion
 
@@ -203,11 +188,6 @@ def mac_matches_serial_number(mac_addr: str, serial_number: str) -> bool:
     )
 
 
-def _unpack_bytes(label: bytes) -> str:
-    """Bytes to string transformation."""
-    return bytes(label).decode().replace("\x00", "")
-
-
 async def async_execute_lifx(method: Callable) -> Message:
     """Execute a lifx coroutine and wait for a response."""
     future: asyncio.Future[Message] = asyncio.Future()
@@ -215,7 +195,6 @@ async def async_execute_lifx(method: Callable) -> Message:
     def _callback(light: Light, message: Message) -> None:
 
         if message is None:
-            _LOGGER.error("No response from %s (%s)", light.ip_addr, light.mac_addr)
             return
 
         if light.mac_addr == TARGET_ANY:
@@ -224,84 +203,20 @@ async def async_execute_lifx(method: Callable) -> Message:
         if not future.done():
             # The future will get canceled out from under
             # us by async_timeout when we hit the OVERALL_TIMEOUT
-
-            if isinstance(message, StateGroup):
-                light.group = _unpack_bytes(message.label)
-            elif isinstance(message, StateLabel):
-                light.label = _unpack_bytes(message.label)
-            elif isinstance(message, StateHostFirmware):
-                major_version = str(message.version >> 16)
-                minor_version = str(message.version & 0xFFFF)
-                light.host_firmware_version = f"{major_version}.{minor_version}"
-            elif isinstance(message, StateVersion):
-                light.product = message.product
-            elif isinstance(message, LightState):
-                light.color = message.color
-                light.label = _unpack_bytes(message.label)
-                light.power_level = message.power_level
-            elif isinstance(message, StateHevCycle):
-                light.hev_cycle = {
-                    "duration": message.duration,
-                    "remaining": message.remaining,
-                    "last_power": message.last_power,
-                }
-            elif isinstance(message, LightStateInfrared):
-                light.infrared_brightness = message.infrared_brightness
-            elif isinstance(message, MultiZoneStateMultiZone):
-                if light.color_zones is None:
-                    light.color_zones = list(None * message.count)
-                for zone in range(message.index, min(message.index + 8, message.count)):
-                    _LOGGER.debug(
-                        "Updating color zones %s-%s of %s for %s",
-                        zone*8 + 1,
-                        min(zone*8 + 8, message.count),
-                        message.count,
-                        light.label,
-                    )
-                    if zone > len(light.color_zones) - 1:
-                        light.color_zones += [message.color[zone - message.index]] * (
-                            zone - len(light.color_zones)
-                        )
-                        light.color_zones.append(message.color[zone - message.index])
-                    else:
-                        light.color_zones[zone] = message.color[zone - message.index]
-            elif isinstance(message, MultiZoneStateExtendedColorZones):
-                light.zones_count = message.zones_count
-                light.color_zones = message.colors[
-                    message.zone_index : message.zones_count
-                ]
-            elif isinstance(message, MultiZoneStateMultiZoneEffect):
-                light.effect = {
-                    "effect": MultiZoneEffectType(message.effect).name.upper()
-                }
-                if message.effect != 0:
-                    light.effect["speed"] = message.speed / 1000
-                    light.effect["duration"] = (
-                        0.0
-                        if message.duration == 0
-                        else float(f"{message.duration / 1000000000:4f}")
-                    )
-                    light.effect["direction"] = MultiZoneDirection(
-                        message.direction
-                    ).name.capitalize()
-            elif isinstance(message, StateWifiInfo):
-                # Not handled by aiolifx so just return the entire message
-                pass
-            elif isinstance(message, Acknowledgement):
-                # Expected response for any non-rapid set method
-                pass
-            else:
-                _LOGGER.debug("No handler for: %s", message.__class__.__name__)
-
             future.set_result((light, message))
 
     method(callb=_callback)
-    result = None
+
+    light: Light = None
+    message: Message = None
 
     async with async_timeout.timeout(OVERALL_TIMEOUT):
-        result = await future
+        light, message = await future
 
-    if result[1] is None:
-        _LOGGER.error("No response from %s (%s)", result[0].ip_addr, result[0].mac_addr)
+    if message is None:
+        _LOGGER.warning("No response from %s (%s)", light.ip_addr, light.mac_addr)
 
-    return result[1]
+    if not light.registered:
+        _LOGGER.warning("aiolifx has unregistered %s (%s)", light.label, light.ip_addr)
+
+    return message
