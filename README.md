@@ -15,13 +15,14 @@ having to do it manually.
 
 > _You will need to enable beta versions in HACS to see the latest release._
 
-LIFX Beta `2022.12.0b1` _requires_ Home Assistant `2022.12.0b1` to work
-effectively. Using this build with Home Assistant 2022.11.0 or older is
-most likely going to make your LIFX lights extremely unstable.
+It's best to run LIFX Beta `2022.12.0b1` with Home Assistant `2022.12.0`.
+Using this build with Home Assistant 2022.11.0 or older is more likely
+to result in your LIFX lights becoming unavailable.
 
-If you do have Home Assistant `2022.12.0b1` installed, using this build
-should result in significantly faster startup times[^1] for Home Assistant as
-well as much faster regular updates, especially of sensor data like RSSI[^2].
+If you do have Home Assistant `2022.12.0` installed, using this build
+should result in significantly faster startup times[^1] for Home Assistant, more
+reliable connectivity with fewer bulbs becoming unavailable (and that should be
+less often) as well as more responsive updates, especially of sensor data like RSSI[^2].
 
 ### Home Assistant Suggested Area Support
 
@@ -38,7 +39,11 @@ installed.
 
 ### Enable debug logging
 
-Adjust your `logger` settings in `configuration.yaml` to enable `debug` for `custom_components.lifx`:
+Only enable debug logging if you're experiencing an issue because it can be
+extremely noisy.
+
+To enable debug logging, adjust your `logger` settings in `configuration.yaml`
+and specify `debug` for `custom_components.lifx`:
 
 ```yaml
 logger:
@@ -59,7 +64,7 @@ re-enable the core integration after removal.
 
 See the [LIFX documentation on the Home Assistant website](https://www.home-assistant.io/integrations/lifx).
 
-[^1]: startup time for my fleet of 60 bulbs has dropped from ~600 seconds to
+[^1]: startup time for my fleet of 60 bulbs has dropped from ~60-90 seconds to
       ~3.5 seconds.
 [^2]: sensor updates are now done every 10 seconds which is three times more
       often than the stable release.

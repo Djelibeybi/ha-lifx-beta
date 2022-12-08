@@ -191,11 +191,9 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
             tasks.append(async_execute_lifx(self.device.get_label))
 
         if len(tasks) > 0:
-
-            async with self.limit:
-                messages: list[Message] = await asyncio.gather(*tasks)
-                if None in messages:
-                    raise UpdateFailed(f"Update failed for {self.device.label}")
+            messages: list[Message] = await asyncio.gather(*tasks)
+            if None in messages:
+                raise UpdateFailed(f"Update failed for {self.device.label}")
 
     async def _async_update_data(self) -> None:
         """Fetch all device data from the api."""
@@ -219,19 +217,17 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
         if lifx_features(self.device)["infrared"]:
             tasks.append(async_execute_lifx(self.device.get_infrared))
 
-        async with self.limit:
-            messages: list[Message] = await asyncio.gather(*tasks)
-            for message in messages:
-                if message is None:
-                    UpdateFailed(
-                        f"Failed updating data from {self.device.label} ({self.device.ip_addr})"
-                    )
-
         if self._update_rssi is True:
-            message: StateWifiInfo = await async_execute_lifx(
-                self.device.get_wifiinfo
-            )
-            self.rssi = signal_to_rssi(message.signal)
+            tasks.append(async_execute_lifx(self.device.get_wifiinfo))
+
+        messages: list[Message] = await asyncio.gather(*tasks)
+        for message in messages:
+            if message is None:
+                raise UpdateFailed(
+                    f"Failed to receive reply from {self.device.label} ({self.device.ip_addr})"
+                )
+            elif isinstance(message, StateWifiInfo):
+                self.rssi = signal_to_rssi(message.signal)
 
         if lifx_features(self.device)["multizone"]:
             self.active_effect = FirmwareEffect[self.device.effect.get("effect", "OFF")]
@@ -242,18 +238,16 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
             partial(self.device.get_color_zones, start_index=0, end_index=255)
         )
 
-    async def async_set_waveform_optional(
-        self, value: dict[str, Any], rapid: bool = True
-    ) -> None:
+    async def async_set_waveform_optional(self, value: dict[str, Any]) -> None:
         """Send a set_waveform_optional message to the device."""
         await async_execute_lifx(
-            partial(self.device.set_waveform_optional, value=value, rapid=rapid)
+            partial(self.device.set_waveform_optional, value=value)
         )
 
     async def async_set_power(self, state: bool, duration: int | None) -> None:
         """Send a set power message to the device."""
         await async_execute_lifx(
-            partial(self.device.set_power, state, duration=duration, rapid=True)
+            partial(self.device.set_power, state, duration=duration)
         )
 
     async def async_set_color(
@@ -261,7 +255,7 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
     ) -> None:
         """Send a set color message to the device."""
         await async_execute_lifx(
-            partial(self.device.set_color, hsbk, duration=duration, rapid=True)
+            partial(self.device.set_color, hsbk, duration=duration)
         )
 
     async def async_set_color_zones(
@@ -281,7 +275,6 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
                 color=hsbk,
                 duration=duration,
                 apply=apply,
-                rapid=False,
             )
         )
 
@@ -309,7 +302,6 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
                 colors_count=colors_count,
                 duration=duration,
                 apply=apply,
-                rapid=True,
             )
         )
 
@@ -332,14 +324,12 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
                     theme, [self.device], round(speed)
                 )
 
-
             await async_execute_lifx(
                 partial(
                     self.device.set_multizone_effect,
                     effect=MultiZoneEffectType[effect.upper()].value,
                     speed=speed,
                     direction=MultiZoneDirection[direction.upper()].value,
-                    rapid=True,
                 )
             )
             self.active_effect = FirmwareEffect[effect.upper()]
@@ -365,7 +355,6 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
                     effect=TileEffectType[effect.upper()].value,
                     speed=speed,
                     palette=palette,
-                    rapid=True,
                 )
             )
             self.active_effect = FirmwareEffect[effect.upper()]
@@ -377,9 +366,7 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
     async def async_set_infrared_brightness(self, option: str) -> None:
         """Set infrared brightness."""
         infrared_brightness = infrared_brightness_option_to_value(option)
-        await async_execute_lifx(
-            partial(self.device.set_infrared, infrared_brightness, rapid=True)
-        )
+        await async_execute_lifx(partial(self.device.set_infrared, infrared_brightness))
 
     async def async_identify_bulb(self) -> None:
         """Identify the device by flashing it three times."""
@@ -419,7 +406,6 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
                     self.device.set_hev_cycle,
                     enable=enable,
                     duration=duration,
-                    rapid=True,
                 )
             )
 
