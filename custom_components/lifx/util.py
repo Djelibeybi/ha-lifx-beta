@@ -201,10 +201,9 @@ async def async_execute_lifx(method: Callable) -> Message:
 
     if message is None:
         _LOGGER.debug(
-            "Empty reply receivied from %s (%s) for %s",
+            "Empty reply receivied from %s (%s)",
             light.label,
             light.ip_addr,
-            method.__name__,
         )
 
     return message

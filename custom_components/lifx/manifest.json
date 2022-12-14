@@ -1,7 +1,7 @@
 {
   "domain": "lifx",
   "name": "LIFX",
-  "version": "2022.12.4",
+  "version": "2022.12.5",
   "config_flow": true,
   "documentation": "https://github.com/Djelibeybi/ha-lifx-beta",
   "requirements": [
