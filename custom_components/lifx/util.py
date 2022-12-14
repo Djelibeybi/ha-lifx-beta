@@ -7,11 +7,9 @@ from collections.abc import Callable
 from math import floor, log10
 from typing import Any
 
-from aiolifx import products
-from aiolifx.aiolifx import Light
+from aiolifx.aiolifx import Light, features_map
 from aiolifx.message import Message
 
-import async_timeout
 from awesomeversion import AwesomeVersion
 
 from homeassistant.components.light import (
@@ -34,7 +32,6 @@ from .const import (
     _LOGGER,
     DOMAIN,
     INFRARED_BRIGHTNESS_VALUES_MAP,
-    OVERALL_TIMEOUT,
     TARGET_ANY,
 )
 
@@ -79,9 +76,7 @@ def convert_16_to_8(value: int) -> int:
 
 def lifx_features(light: Light) -> dict[str, Any]:
     """Return a feature map for this light, or a default map if unknown."""
-    features: dict[str, Any] = (
-        products.features_map.get(light.product) or products.features_map[1]
-    )
+    features: dict[str, Any] = features_map.get(light.product) or features_map[1]
     return features
 
 
@@ -190,33 +185,26 @@ def mac_matches_serial_number(mac_addr: str, serial_number: str) -> bool:
 
 async def async_execute_lifx(method: Callable) -> Message:
     """Execute a lifx coroutine and wait for a response."""
-    future: asyncio.Future[Message] = asyncio.Future()
+
+    future: asyncio.Future[tuple[Light, Message]] = asyncio.get_running_loop().create_future()
 
     def _callback(light: Light, message: Message) -> None:
 
-        if message is None:
-            return
-
-        if light.mac_addr == TARGET_ANY:
+        if light.mac_addr == TARGET_ANY and message is not None:
             light.mac_addr = message.target_addr
 
         if not future.done():
-            # The future will get canceled out from under
-            # us by async_timeout when we hit the OVERALL_TIMEOUT
             future.set_result((light, message))
 
     method(callb=_callback)
-
-    light: Light = None
-    message: Message = None
-
-    async with async_timeout.timeout(OVERALL_TIMEOUT):
-        light, message = await future
+    light, message = await future
 
     if message is None:
-        _LOGGER.warning("No response from %s (%s)", light.ip_addr, light.mac_addr)
-
-    if not light.registered:
-        _LOGGER.warning("aiolifx has unregistered %s (%s)", light.label, light.ip_addr)
+        _LOGGER.debug(
+            "Empty reply receivied from %s (%s) for %s",
+            light.label,
+            light.ip_addr,
+            method.__name__,
+        )
 
     return message

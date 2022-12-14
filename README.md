@@ -11,13 +11,17 @@ having to do it manually.
 
 **WARNING**: if you prefer stability, do not install this custom component.
 
-## Current build: `2022.12.2`
+## Current build: `2022.12.3`
 
-It's best to run LIFX Beta `2022.12.2` with Home Assistant `2022.12.0`.
+It's best to run LIFX Beta `2022.12.3` with Home Assistant `2022.12.0` or newer.
 Using this build with Home Assistant 2022.11.0 or older is more likely
 to result in your LIFX lights becoming unavailable.
 
-If you do have Home Assistant `2022.12.0` installed, using this build
+This release includes the latest LIFX themes from the updated LIFX smartphone
+app v4.13.0 and resolves a bug with the LIFX pulse service when run against
+LIFX white bulbs.
+
+If you do have Home Assistant `2022.12.0` or newer installed, using this build
 should result in significantly faster startup times[^1] for Home Assistant, more
 reliable connectivity with fewer bulbs becoming unavailable (and that should be
 less often) as well as more responsive updates, especially of sensor data like RSSI[^2].
@@ -37,8 +41,8 @@ installed.
 
 ### Enable debug logging
 
-Only enable debug logging if you're experiencing an issue because it can be
-extremely noisy.
+> Note: Only enable debug logging if you're experiencing a problem and need to
+> log an issue.
 
 To enable debug logging, adjust your `logger` settings in `configuration.yaml`
 and specify `debug` for `custom_components.lifx`:
