@@ -23,7 +23,6 @@ from .const import ATTR_RSSI, DOMAIN
 from .coordinator import LIFXUpdateCoordinator
 from .entity import LIFXEntity
 
-SCAN_INTERVAL = timedelta(seconds=30)
 RSSI_DBM_FW = AwesomeVersion("2.77")
 
 
@@ -65,10 +64,11 @@ class LIFXRssiSensor(LIFXEntity, SensorEntity):
     @property
     def native_unit_of_measurement(self) -> str | None:
         """Return native unit of measurement."""
-        if AwesomeVersion(self.bulb.host_firmware_version) <= RSSI_DBM_FW:
-            return SIGNAL_STRENGTH_DECIBELS
-
-        return SIGNAL_STRENGTH_DECIBELS_MILLIWATT
+        if self.bulb.host_firmware_version is not None:
+            if AwesomeVersion(self.bulb.host_firmware_version) <= RSSI_DBM_FW:
+                return SIGNAL_STRENGTH_DECIBELS
+            return SIGNAL_STRENGTH_DECIBELS_MILLIWATT
+        return None
 
     @callback
     def _handle_coordinator_update(self) -> None:
