@@ -193,9 +193,12 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
         if len(tasks) > 0:
             async with self.lock:
                 messages: list[Message] = await asyncio.gather(*tasks)
-
                 if None in messages:
-                    raise UpdateFailed(f"Update failed for {self.device.label}")
+                    _LOGGER.warning(
+                        "Received incomplete response from %s (%s)",
+                        self.device.label,
+                        self.device.ip_addr,
+                    )
 
     async def _async_update_data(self) -> None:
         """Fetch all device data from the api."""
@@ -204,10 +207,14 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
 
         tasks: list[Callable] = [async_execute_lifx(self.device.get_color)]
 
+        if self._update_rssi is True:
+            tasks.append(async_execute_lifx(self.device.get_wifiinfo))
+
         # Update extended multizone devices
         if lifx_features(self.device)["extended_multizone"]:
             tasks.append(async_execute_lifx(self.device.get_extended_color_zones))
             tasks.append(async_execute_lifx(self.device.get_multizone_effect))
+
         # use legacy methods for older devices
         elif lifx_features(self.device)["multizone"]:
             tasks.append(self.async_get_color_zones())
@@ -219,18 +226,17 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
         if lifx_features(self.device)["infrared"]:
             tasks.append(async_execute_lifx(self.device.get_infrared))
 
-        if self._update_rssi is True:
-            tasks.append(async_execute_lifx(self.device.get_wifiinfo))
-
         async with self.lock:
             messages: list[Message] = await asyncio.gather(*tasks)
-            for message in messages:
-                if message is None:
-                    raise UpdateFailed(
-                        f"Failed to receive reply from {self.device.label} ({self.device.ip_addr})"
-                    )
-                elif isinstance(message, StateWifiInfo):
-                    self.rssi = signal_to_rssi(message.signal)
+            if len(messages) > 1 and isinstance(messages[1], StateWifiInfo):
+                self.rssi = signal_to_rssi(messages[1].signal)
+
+            if None in messages:
+                _LOGGER.warning(
+                    "Received incomplete response from %s (%s)",
+                    self.device.label,
+                    self.device.ip_addr,
+                )
 
         if lifx_features(self.device)["multizone"]:
             self.active_effect = FirmwareEffect[self.device.effect.get("effect", "OFF")]

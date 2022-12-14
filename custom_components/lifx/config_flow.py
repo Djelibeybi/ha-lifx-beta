@@ -223,27 +223,27 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return None
         device: Light = connection.device
         try:
-            await asyncio.wait(
-                [
+            messages = await asyncio.gather(
+                *[
                     async_execute_lifx(device.get_hostfirmware),
                     async_execute_lifx(device.get_version),
                     async_execute_lifx(device.get_label),
-                ],
-                timeout=15,
-                return_when=asyncio.ALL_COMPLETED,
+                    async_execute_lifx(device.get_group),
+                ]
             )
         except asyncio.TimeoutError:
             return None
         finally:
             connection.async_stop()
         if (
-            lifx_features(device)["relays"] is True
+            messages is None
+            or len(messages) != 4
+            or lifx_features(device)["relays"] is True
             or device.host_firmware_version is None
         ):
             return None  # relays not supported
-        if serial is not None and device.mac_addr != serial:
-            return None
         # device.mac_addr is not the mac_address, its the serial number
+        device.mac_addr = serial or messages[0].target_addr
         await self.async_set_unique_id(
             formatted_serial(device.mac_addr), raise_on_progress=raise_on_progress
         )
