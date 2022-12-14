@@ -33,8 +33,6 @@ from .const import ATTR_THEME, DATA_LIFX_MANAGER, DOMAIN
 from .coordinator import LIFXUpdateCoordinator, Light
 from .util import convert_8_to_16, find_hsbk
 
-SCAN_INTERVAL = timedelta(seconds=10)
-
 SERVICE_EFFECT_COLORLOOP = "effect_colorloop"
 SERVICE_EFFECT_FLAME = "effect_flame"
 SERVICE_EFFECT_MORPH = "effect_morph"

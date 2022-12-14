@@ -192,13 +192,8 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
 
         if len(tasks) > 0:
             async with self.lock:
-                messages: list[Message] = await asyncio.gather(*tasks)
-                if None in messages:
-                    _LOGGER.warning(
-                        "Received incomplete response from %s (%s)",
-                        self.device.label,
-                        self.device.ip_addr,
-                    )
+                await asyncio.gather(*tasks)
+
 
     async def _async_update_data(self) -> None:
         """Fetch all device data from the api."""
@@ -230,13 +225,6 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
             messages: list[Message] = await asyncio.gather(*tasks)
             if len(messages) > 1 and isinstance(messages[1], StateWifiInfo):
                 self.rssi = signal_to_rssi(messages[1].signal)
-
-            if None in messages:
-                _LOGGER.warning(
-                    "Received incomplete response from %s (%s)",
-                    self.device.label,
-                    self.device.ip_addr,
-                )
 
         if lifx_features(self.device)["multizone"]:
             self.active_effect = FirmwareEffect[self.device.effect.get("effect", "OFF")]
