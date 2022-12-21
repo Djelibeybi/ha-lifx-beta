@@ -49,5 +49,6 @@ INFRARED_BRIGHTNESS_VALUES_MAP = {
     65535: "100%",
 }
 DATA_LIFX_MANAGER = "lifx_manager"
+DATA_LIFX_CONNECT = "lifx_connection_manager"
 
 _LOGGER = logging.getLogger(__package__)

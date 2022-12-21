@@ -11,22 +11,30 @@ having to do it manually.
 
 **WARNING**: if you prefer stability, do not install this custom component.
 
-## Current build: `2022.12.5`
+## Changes
 
-It's best to run LIFX Beta `2022.12.5` with Home Assistant `2022.12.0` or newer.
-Using this build with Home Assistant 2022.11.0 or older is more likely
-to result in your LIFX lights becoming unavailable.
+Current version: `2022.12.6`
+
+**This beta requires Home Assistant 2022.12.0 or higher.**
+
+*Any warnings or errors reported by Home Assistant that start with `[DEBUG]`,
+can be ignored.*
+
+### Breaking changes
+
+1. This build does not support YAML-based configuration *at all*. All LIFX devices
+must be configured via the UI.
+
+1. This build does not support migrating from YAML or from the older single config
+version of the integration.
+
+### Additional changes
 
 This release includes the latest LIFX themes from the updated LIFX smartphone
 app v4.13.0 and resolves a bug with the LIFX pulse service when run against
 LIFX white bulbs.
 
-If you do have Home Assistant `2022.12.0` or newer installed, using this build
-should result in significantly faster startup times[^1] for Home Assistant, more
-reliable connectivity with fewer bulbs becoming unavailable (and that should be
-less often) as well as more responsive updates, especially of sensor data like RSSI[^2].
-
-### Home Assistant Suggested Area Support
+### Suggested Area Support
 
 This build will automatically suggest the LIFX group as the suggested area for
 a light during config flow. This should improve onboarding for large fleets
@@ -35,7 +43,7 @@ of lights.
 ### Installation
 
 Add <https://github.com/Djelibeybi/ha-lifx-beta> to [HACS](https://hacs.xyz) as
-[a new repository](https://hacs.xyz/docs/navigation/stores) in the _Integration_
+[a new repository](https://hacs.xyz/docs/navigation/stores) in the *Integration*
 category. After a few moments, it should appear as a "New Repository" to be
 installed.
 
@@ -54,19 +62,16 @@ logger:
     custom_components.lifx: debug
 ```
 
-If you want to report an issue, please collect some debug logs first, then [open a GitHub issue](https://github.com/Djelibeybi/ha-lifx-beta/issues)
+If you want to report an issue, please collect some debug logs first, then
+[open a GitHub issue](https://github.com/Djelibeybi/ha-lifx-beta/issues)
 and attach the logs. Be sure to review them first so you don't publish anything secret.
 
 ## Removal
 
-Remove the integration using HACS but remember to click "ignore" to keep your current config so that the core integration continues to work. You will need to restart to
-re-enable the core integration after removal.
+Remove the integration using HACS but remember to click "ignore" to keep your
+current config so that the core integration continues to work. You will need to
+restart to re-enable the core integration after removal.
 
 ## Further documentation
 
 See the [LIFX documentation on the Home Assistant website](https://www.home-assistant.io/integrations/lifx).
-
-[^1]: startup time for my fleet of 60 bulbs has dropped from ~60-90 seconds to
-      ~3.5 seconds.
-[^2]: sensor updates are now done every 10 seconds which is three times more
-      often than the stable release.
