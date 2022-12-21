@@ -9,7 +9,7 @@ from typing import Any
 
 from aiolifx.aiolifx import Light, features_map
 from aiolifx.message import Message
-
+import async_timeout
 from awesomeversion import AwesomeVersion
 
 from homeassistant.components.light import (
@@ -32,10 +32,12 @@ from .const import (
     _LOGGER,
     DOMAIN,
     INFRARED_BRIGHTNESS_VALUES_MAP,
+    OVERALL_TIMEOUT,
     TARGET_ANY,
 )
 
 FIX_MAC_FW = AwesomeVersion("3.70")
+INFLIGHT_LIMIT = asyncio.Semaphore(30)
 
 
 @callback
@@ -118,7 +120,7 @@ def find_hsbk(hass: HomeAssistant, **kwargs: Any) -> list[float | int | None] | 
 
     if ATTR_KELVIN in kwargs:
         _LOGGER.warning(
-            "The 'kelvin' parameter is deprecated. Please use 'color_temp_kelvin' for all service calls"
+            "The 'kelvin' parameter is deprecated. Use 'color_temp_kelvin' instead"
         )
         kelvin = kwargs.pop(ATTR_KELVIN)
         saturation = 0
@@ -183,10 +185,10 @@ def mac_matches_serial_number(mac_addr: str, serial_number: str) -> bool:
     )
 
 
-async def async_execute_lifx(method: Callable) -> Message:
+async def async_execute_lifx(method: Callable) -> Message | None:
     """Execute a lifx coroutine and wait for a response."""
 
-    future: asyncio.Future[tuple[Light, Message]] = asyncio.get_running_loop().create_future()
+    future: asyncio.Future[Message] = asyncio.get_event_loop().create_future()
 
     def _callback(light: Light, message: Message) -> None:
 
@@ -194,16 +196,10 @@ async def async_execute_lifx(method: Callable) -> Message:
             light.mac_addr = message.target_addr
 
         if not future.done():
-            future.set_result((light, message))
+            future.set_result(message)
 
     method(callb=_callback)
-    light, message = await future
-
-    if message is None:
-        _LOGGER.debug(
-            "Empty reply receivied from %s (%s)",
-            light.label,
-            light.ip_addr,
-        )
+    async with INFLIGHT_LIMIT, async_timeout.timeout(OVERALL_TIMEOUT):
+        message: Message = await future
 
     return message

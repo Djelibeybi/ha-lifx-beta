@@ -19,7 +19,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.typing import DiscoveryInfoType
 
 from .const import _LOGGER, CONF_SERIAL, DOMAIN, TARGET_ANY
-from .discovery import async_discover_devices
+from .discovery import LIFXConnectivityManager
 from .util import (
     async_entry_is_legacy,
     async_execute_lifx,
@@ -30,7 +30,7 @@ from .util import (
 )
 
 
-class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore
     """Handle a config flow for LIFX."""
 
     VERSION = 1
@@ -186,7 +186,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._discovered_devices = {
             # device.mac_addr is not the mac_address, its the serial number
             device.mac_addr: device
-            for device in await async_discover_devices(self.hass)
+            for device in await LIFXConnectivityManager(
+                self.hass
+            ).async_discover_devices()
         }
         devices_name = {
             serial: f"{serial} ({device.ip_addr})"
@@ -236,12 +238,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         finally:
             connection.async_stop()
         if (
-            messages is None
-            or len(messages) != 4
-            or lifx_features(device)["relays"] is True
-            or device.host_firmware_version is None
+            len(messages) != 4  # if not all responses are received
+            or None in messages  # if any of them are empty
+            or lifx_features(device)["relays"] is True  # if the device has relays
         ):
-            return None  # relays not supported
+            # not supported so return
+            return None
         # device.mac_addr is not the mac_address, its the serial number
         device.mac_addr = serial or messages[0].target_addr
         await self.async_set_unique_id(

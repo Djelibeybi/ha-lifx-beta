@@ -1,13 +1,13 @@
 {
   "domain": "lifx",
   "name": "LIFX",
-  "version": "2022.12.5",
+  "version": "2022.12.6",
   "config_flow": true,
   "documentation": "https://github.com/Djelibeybi/ha-lifx-beta",
   "requirements": [
     "aiolifx==0.8.7",
     "aiolifx_effects==0.3.1",
-    "aiolifx_themes==0.3.0"
+    "aiolifx_themes==0.4.0"
   ],
   "dependencies": ["network"],
   "homekit": {
