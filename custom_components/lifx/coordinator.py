@@ -187,15 +187,15 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
 
                     self._disconnects += 1
 
-                    _LOGGER.warning(
-                        "[DEBUG] soft disconnect count for %s (%s) is %s",
+                    _LOGGER.debug(
+                        "Incrementing soft disconnect count for %s (%s) to %s",
                         self.device.label,
                         self.device.ip_addr,
                         self._disconnects,
                     )
                     if self._disconnects > 3:
-                        _LOGGER.error(
-                            "[DEBUG] Soft disconnect from %s (%s)",
+                        _LOGGER.debug(
+                            "Soft disconnecting from %s (%s)",
                             self.device.label,
                             self.device.ip_addr,
                         )
