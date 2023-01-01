@@ -9,7 +9,6 @@ from typing import Any
 from aiolifx import products
 from aiolifx.aiolifx import Light
 from aiolifx.message import Message
-import async_timeout
 from awesomeversion import AwesomeVersion
 
 from homeassistant.components.light import (
@@ -28,13 +27,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 import homeassistant.util.color as color_util
 
-from .const import (
-    _LOGGER,
-    DOMAIN,
-    INFRARED_BRIGHTNESS_VALUES_MAP,
-    OVERALL_TIMEOUT,
-    TARGET_ANY,
-)
+from .const import _LOGGER, DOMAIN, INFRARED_BRIGHTNESS_VALUES_MAP, TARGET_ANY
 
 FIX_MAC_FW = AwesomeVersion("3.70")
 
@@ -201,11 +194,10 @@ async def async_execute_lifx(method: Callable) -> Message:
             future.set_result(message)
 
     method(callb=_callback)
-    result = None
 
-    async with async_timeout.timeout(OVERALL_TIMEOUT):
-        result = await future
+    result = await future
 
     if result is None:
         raise asyncio.TimeoutError("No response from LIFX bulb")
+
     return result

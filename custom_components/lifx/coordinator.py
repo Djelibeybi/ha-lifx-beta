@@ -16,7 +16,6 @@ from aiolifx.aiolifx import (
     TileEffectType,
 )
 from aiolifx.connection import LIFXConnection
-from aiolifx.msgtypes import LightState, StateGroup, StateHostFirmware, StateVersion
 from aiolifx_themes.themes import ThemeLibrary, ThemePainter
 from awesomeversion import AwesomeVersion
 
@@ -114,7 +113,8 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
             _setup_tasks.append(async_execute_lifx(self.device.get_group))
 
         if len(_setup_tasks) > 0:
-            _LOGGER.debug("Running setup tasks.")
+
+            task_names = [task.__name__ for task in _setup_tasks]  # type: ignore
             messages = await asyncio.gather(*_setup_tasks)
 
             while len(self.device.message) > 0:
@@ -124,28 +124,9 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
                 )
                 await asyncio.sleep(0)  # pragma: no cover
 
-            for message in messages:
-                if isinstance(message, LightState):
-                    self.device.color = message.color
-                    self.device.label = (
-                        bytes(message.label).decode().replace("\x00", "")
-                    )
-                    self.device.power_level = message.power_level
-                elif isinstance(message, StateHostFirmware):
-                    major_version = str(message.version >> 16)
-                    minor_version = str(message.version & 0xFFFF)
-                    self.device.host_firmware_version = (
-                        f"{major_version}.{minor_version}"
-                    )
-                elif isinstance(message, StateVersion):
-                    self.device.product = message.product
-                    self.device.vendor = message.product
-                elif isinstance(message, StateGroup):
-                    self.device.group = (
-                        bytes(message.label).decode().replace("\x00", "")
-                    )
-                elif message is None:
-                    _LOGGER.warning("Empty response received during setup.")
+            for idx, message in enumerate(messages):
+                if message is None:
+                    _LOGGER.debug("Empty reply received to %s request", task_names[idx])
 
     @property
     def serial_number(self) -> str:
@@ -266,30 +247,41 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
         # Update extended multizone devices
         if lifx_features(self.device)["extended_multizone"]:
             _tasks.append(async_execute_lifx(self.device.get_extended_color_zones))
-            _tasks.append(async_execute_lifx(self.device.get_multizone_effect))
+            _tasks.append(self.async_get_multizone_effect())
             # use legacy methods for older devices
         elif lifx_features(self.device)["multizone"]:
-            _tasks.append(self.async_get_color_zones)
-            _tasks.append(self.async_get_multizone_effect)
+            _tasks.append(self.async_get_color_zones())
+            _tasks.append(self.async_get_multizone_effect())
 
         if self._update_rssi is True:
-            _tasks.append(self.async_update_rssi)
+            _tasks.append(self.async_update_rssi())
 
         if self._update_zones is True:
-            _tasks.append(self.async_update_zones)
+            _tasks.append(self.async_update_zones())
 
         if lifx_features(self.device)["hev"]:
-            _tasks.append(self.async_get_hev_cycle)
+            _tasks.append(async_execute_lifx(self.device.get_hev_cycle))
 
         if lifx_features(self.device)["infrared"]:
             _tasks.append(async_execute_lifx(self.device.get_infrared))
 
+        task_names = [task.__name__ for task in _tasks]  # type: ignore
         messages = await asyncio.gather(*_tasks)  # type: ignore
+
         while len(self.device.message) > 0:
+            _LOGGER.debug(  # pragma: no cover
+                "aiolifx message queue: %s left", len(self.device.message)
+            )
             await asyncio.sleep(0)  # pragma: no cover
 
-        if None in messages:
-            _LOGGER.debug("Empty response received during update")  # pragma: no cover
+        for idx, message in enumerate(messages):
+            if task_names[idx] == "async_execute_lifx" and message is None:
+                _LOGGER.debug(
+                    "Received empty response to %s for %s (%s)",
+                    task_names[idx],
+                    self.device.label,
+                    self.device.ip_addr,
+                )
 
     async def async_get_color_zones(self) -> None:
         """Get updated color information for each zone."""
@@ -506,11 +498,6 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
         if self.device.hev_cycle is None:
             return None
         return bool(self.device.hev_cycle.get(ATTR_REMAINING, 0) > 0)
-
-    async def async_get_hev_cycle(self) -> None:
-        """Update the HEV cycle status from a LIFX Clean bulb."""
-        if lifx_features(self.device)["hev"]:
-            await async_execute_lifx(self.device.get_hev_cycle)
 
     async def async_set_hev_cycle_state(self, enable: bool, duration: int = 0) -> None:
         """Start or stop an HEV cycle on a LIFX Clean bulb."""
