@@ -6,13 +6,15 @@ This is a pre-release/testing version of the core LIFX integration. This repo
 exists purely to make it easier to install the test version via HACS instead of
 having to do it manually.
 
-## Changes
+## Changes from 2023.1.0b1
 
-Current version: `2023.1.0b1`
+* Minor fix to make the `lifx.set_hev_cycle_state` service work as expected.
 
-This first new LIFX Beta version in 2023 drops almost everything I was testing in the previous beta and uses a new technique I'm hoping is as effective in your setups as it has been on mine.
+## Changes from 2022.12
 
-This version also increases the update rate for all sensors to every 10 seconds as the integration now updates everything all at once.
+Current version: `2023.1.0b2`
+
+This first (ish) new LIFX Beta version in 2023 drops almost everything I was testing in the previous beta and uses a new technique I'm hoping is as effective in your setups as it has been on mine. This version also increases the update rate for all sensors to every 10 seconds as the integration now updates everything all at once.
 
 As always, `DEBUG` logging is _very, very noisy._ Only enable it if you're having a particular problem and need to open an issue.
 
