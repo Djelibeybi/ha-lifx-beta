@@ -3,55 +3,56 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import timedelta
 from enum import IntEnum
 from functools import partial
-from typing import Any, cast
+from math import floor, log10
+from typing import Any, Awaitable, cast
 
 from aiolifx.aiolifx import (
     Light,
     MultiZoneDirection,
     MultiZoneEffectType,
     TileEffectType,
-    features_map,
-    product_map,
 )
 from aiolifx.connection import LIFXConnection
-from aiolifx.message import Message
-from aiolifx.msgtypes import StateWifiInfo
+from aiolifx.msgtypes import LightState, StateGroup, StateHostFirmware, StateVersion
 from aiolifx_themes.themes import ThemeLibrary, ThemePainter
-import async_timeout
+from awesomeversion import AwesomeVersion
 
-from homeassistant.const import Platform
+from homeassistant.const import (
+    SIGNAL_STRENGTH_DECIBELS,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+    Platform,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.debounce import Debouncer
-from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
     _LOGGER,
     ATTR_REMAINING,
-    DATA_LIFX_CONNECT,
     DOMAIN,
     IDENTIFY_WAVEFORM,
     MESSAGE_RETRIES,
     MESSAGE_TIMEOUT,
-    OVERALL_TIMEOUT,
-    TARGET_ANY,
     UNAVAILABLE_GRACE,
 )
-from .discovery import LIFXConnectivityManager
 from .util import (
+    async_execute_lifx,
+    convert_16_to_8,
     get_real_mac_addr,
     infrared_brightness_option_to_value,
     infrared_brightness_value_to_option,
-    signal_to_rssi,
+    lifx_features,
 )
 
 LIGHT_UPDATE_INTERVAL = 10
+SENSOR_UPDATE_INTERVAL = 30
 REQUEST_REFRESH_DELAY = 0.35
 LIFX_IDENTIFY_DELAY = 3.0
+RSSI_DBM_FW = AwesomeVersion("2.77")
 
 
 class FirmwareEffect(IntEnum):
@@ -63,11 +64,7 @@ class FirmwareEffect(IntEnum):
     FLAME = 3
 
 
-class LIFXException(Exception):
-    """LIFX specific exception."""
-
-
-class LIFXUpdateCoordinator(DataUpdateCoordinator):
+class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
     """DataUpdateCoordinator to gather data for a specific lifx device."""
 
     def __init__(
@@ -79,15 +76,13 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
         """Initialize DataUpdateCoordinator."""
         assert connection.device is not None
         self.connection = connection
-        self.connect: LIFXConnectivityManager = hass.data[DOMAIN][DATA_LIFX_CONNECT]
-        self.device = connection.device
-        self._update_rssi: bool = False
-        self.rssi: int = 0
-        self.limit = asyncio.Semaphore(30)
+        self.device: Light = connection.device
+        self.lock = asyncio.Lock()
         self.active_effect = FirmwareEffect.OFF
+        self._update_rssi: bool = False
+        self._update_zones: bool = False
+        self._rssi: int = 0
         self.last_used_theme: str = ""
-        self._features: dict[str, Any] = {}
-        self._disconnects: int = 0
 
         super().__init__(
             hass,
@@ -101,13 +96,56 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
             ),
         )
 
-    @callback
-    def async_setup(self) -> None:
+    async def async_setup(self) -> None:
         """Change timeouts."""
-
         self.device.timeout = MESSAGE_TIMEOUT
         self.device.retry_count = MESSAGE_RETRIES
         self.device.unregister_timeout = UNAVAILABLE_GRACE
+
+        _setup_tasks: list[Awaitable] = [async_execute_lifx(self.device.get_color)]
+
+        if self.device.host_firmware_version is None:
+            _setup_tasks.append(async_execute_lifx(self.device.get_hostfirmware))
+
+        if self.device.product is None:
+            _setup_tasks.append(async_execute_lifx(self.device.get_version))
+
+        if self.device.group is None:
+            _setup_tasks.append(async_execute_lifx(self.device.get_group))
+
+        if len(_setup_tasks) > 0:
+            _LOGGER.debug("Running setup tasks.")
+            messages = await asyncio.gather(*_setup_tasks)
+
+            while len(self.device.message) > 0:
+                _LOGGER.debug(
+                    "Waiting for message queue to empty: %s left",
+                    len(self.device.message),
+                )
+                await asyncio.sleep(0)  # pragma: no cover
+
+            for message in messages:
+                if isinstance(message, LightState):
+                    self.device.color = message.color
+                    self.device.label = (
+                        bytes(message.label).decode().replace("\x00", "")
+                    )
+                    self.device.power_level = message.power_level
+                elif isinstance(message, StateHostFirmware):
+                    major_version = str(message.version >> 16)
+                    minor_version = str(message.version & 0xFFFF)
+                    self.device.host_firmware_version = (
+                        f"{major_version}.{minor_version}"
+                    )
+                elif isinstance(message, StateVersion):
+                    self.device.product = message.product
+                    self.device.vendor = message.product
+                elif isinstance(message, StateGroup):
+                    self.device.group = (
+                        bytes(message.label).decode().replace("\x00", "")
+                    )
+                elif message is None:
+                    _LOGGER.warning("Empty response received during setup.")
 
     @property
     def serial_number(self) -> str:
@@ -131,9 +169,17 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
         return cast(str, self.device.label)
 
     @property
-    def model(self) -> str:
-        """Return the model type of the light."""
-        return product_map[self.device.product]
+    def rssi(self) -> int:
+        """Return stored RSSI value."""
+        return self._rssi
+
+    @property
+    def rssi_uom(self) -> str:
+        """Return the RSSI unit of measurement."""
+        if AwesomeVersion(self.device.host_firmware_version) <= RSSI_DBM_FW:
+            return SIGNAL_STRENGTH_DECIBELS
+
+        return SIGNAL_STRENGTH_DECIBELS_MILLIWATT
 
     @property
     def current_infrared_brightness(self) -> str | None:
@@ -141,87 +187,26 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
         return infrared_brightness_value_to_option(self.device.infrared_brightness)
 
     @property
-    def lifx_features(self) -> dict[str, Any]:
-        """Retrieve and cache lifx features of this device."""
-        features: dict[str, Any] = (
-            features_map.get(self.device.product) or features_map[1]
-        )
-        return features
+    def zones_count(self) -> int:
+        """Return the number of zones on the device."""
+        return int(self.device.zones_count)
 
-    async def async_lifx_method_as_coro(self, method: Callable) -> Message | None:
-        """Execute a lifx coroutine and wait for a response."""
-
-        future: asyncio.Future[Message] = self.hass.loop.create_future()
-
-        def _callback(light: Light, message: Message) -> None:
-            """Ue the aiolifx callback return result to the future."""
-            if light.mac_addr == TARGET_ANY and message is not None:
-                light.mac_addr = message.target_addr
-
-            if not future.done():
-                future.set_result(message)
-
-        def _reset_disconnects(_: datetime) -> None:
-            """Reset disconnects to 0."""
-            self._disconnects = 0
-
-        if self.limit.locked():
-            _LOGGER.debug(
-                "In-flight limit reached: sleeping for %s seconds.", MESSAGE_TIMEOUT
-            )
-            await asyncio.sleep(MESSAGE_TIMEOUT)
-            return await self.async_lifx_method_as_coro(method)
-
-        method(callb=_callback)
-
-        async with self.limit, async_timeout.timeout(OVERALL_TIMEOUT):
-            message: Message = await future
-
-            if message is None:
-                if self.connect.is_connected(self.device.mac_addr):
-                    if self._disconnects == 0:
-                        # reset disconnects in a minute
-                        async_track_time_interval(
-                            self.hass, _reset_disconnects, timedelta(minutes=1)
-                        )
-
-                    self._disconnects += 1
-
-                    _LOGGER.debug(
-                        "Incrementing soft disconnect count for %s (%s) to %s",
-                        self.device.label,
-                        self.device.ip_addr,
-                        self._disconnects,
-                    )
-                    if self._disconnects > 3:
-                        _LOGGER.debug(
-                            "Soft disconnecting from %s (%s)",
-                            self.device.label,
-                            self.device.ip_addr,
-                        )
-
-                        raise UpdateFailed(
-                            f"{self.device.label} ({self.device.ip_addr})"
-                        )
-
-            if (
-                self.connect.is_connected(self.device.mac_addr) is False
-                and self._disconnects > 0
-            ):
-                self.connect.set_connected(self.device.mac_addr, True)
-                _reset_disconnects(datetime.now())
-
-                _LOGGER.debug(
-                    "Reconnected to %s (%s)",
-                    self.label,
-                    self.device.ip_addr,
-                )
-
-            return message
+    @property
+    def zone_colors(self) -> dict[str, dict[str, Any]]:
+        """Return a list of colors indexed by zone."""
+        return {
+            f"Zone {index}": {
+                "hs_color": f"({int((color[0] / 65535) * 360)}, {int((color[1] / 65535) * 100)})",
+                "brightness": round(convert_16_to_8(color[2])),
+                "brightness_pct": round(color[2] / 65535 * 100),
+                "color_temp_kelvin": color[3],
+            }
+            for index, color in enumerate(self.device.color_zones)
+        }
 
     async def diagnostics(self) -> dict[str, Any]:
         """Return diagnostic information about the device."""
-        features = self.lifx_features
+        features = lifx_features(self.device)
         device_data = {
             "firmware": self.device.host_firmware_version,
             "vendor": self.device.vendor,
@@ -234,7 +219,7 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
             "power": self.device.power_level,
         }
 
-        if features.get("multizone", False) is True:
+        if features["multizone"] is True:
             zones = {"count": self.device.zones_count, "state": {}}
             for index, zone_color in enumerate(self.device.color_zones):
                 zones["state"][index] = {
@@ -267,56 +252,81 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> None:
         """Fetch all device data from the api."""
 
-        await self.async_lifx_method_as_coro(self.device.get_color)
+        _tasks: list[Awaitable | Callable] = [async_execute_lifx(self.device.get_color)]
 
         if self.device.host_firmware_version is None:
-            await self.async_lifx_method_as_coro(self.device.get_hostfirmware)
+            _tasks.append(async_execute_lifx(self.device.get_hostfirmware))
 
         if self.device.product is None:
-            await self.async_lifx_method_as_coro(self.device.get_version)
+            _tasks.append(async_execute_lifx(self.device.get_version))
 
         if self.device.group is None:
-            await self.async_lifx_method_as_coro(self.device.get_group)
-
-        if self.device.label is None:
-            await self.async_lifx_method_as_coro(self.device.get_label)
-
-        if self._update_rssi is True:
-            await self.async_lifx_method_as_coro(self.device.get_wifiinfo)
+            _tasks.append(async_execute_lifx(self.device.get_group))
 
         # Update extended multizone devices
-        if self.lifx_features.get("extended_multizone", False):
-            await self.async_lifx_method_as_coro(self.device.get_extended_color_zones)
-            await self.async_lifx_method_as_coro(self.device.get_multizone_effect)
-        # use legacy methods for older devices
-        elif self.lifx_features.get("multizone", False):
-            await self.async_get_color_zones()
-            await self.async_lifx_method_as_coro(self.device.get_multizone_effect)
+        if lifx_features(self.device)["extended_multizone"]:
+            _tasks.append(async_execute_lifx(self.device.get_extended_color_zones))
+            _tasks.append(async_execute_lifx(self.device.get_multizone_effect))
+            # use legacy methods for older devices
+        elif lifx_features(self.device)["multizone"]:
+            _tasks.append(self.async_get_color_zones)
+            _tasks.append(self.async_get_multizone_effect)
 
-        if self.lifx_features.get("hev", False):
-            await self.async_lifx_method_as_coro(self.device.get_hev_cycle)
+        if self._update_rssi is True:
+            _tasks.append(self.async_update_rssi)
 
-        if self.lifx_features.get("infrared", False):
-            await self.async_lifx_method_as_coro(self.device.get_infrared)
+        if self._update_zones is True:
+            _tasks.append(self.async_update_zones)
 
-        if self.lifx_features.get("multizone", False):
-            self.active_effect = FirmwareEffect[self.device.effect.get("effect", "OFF")]
+        if lifx_features(self.device)["hev"]:
+            _tasks.append(self.async_get_hev_cycle)
+
+        if lifx_features(self.device)["infrared"]:
+            _tasks.append(async_execute_lifx(self.device.get_infrared))
+
+        messages = await asyncio.gather(*_tasks)  # type: ignore
+        while len(self.device.message) > 0:
+            await asyncio.sleep(0)  # pragma: no cover
+
+        if None in messages:
+            _LOGGER.debug("Empty response received during update")  # pragma: no cover
 
     async def async_get_color_zones(self) -> None:
         """Get updated color information for each zone."""
-        await self.async_lifx_method_as_coro(
-            partial(self.device.get_color_zones, start_index=0, end_index=255)
+
+        zone = 0
+        top = 1
+        while zone < top:
+            # Each get_color_zones can update 8 zones at once
+            resp = await async_execute_lifx(
+                partial(self.device.get_color_zones, start_index=zone)
+            )
+            zone += 8
+            top = resp.count
+
+            # We only await multizone responses so don't ask for just one
+            if zone == top - 1:
+                zone -= 1
+
+    async def async_get_extended_color_zones(self) -> None:
+        """Get updated color information for all zones."""
+        await async_execute_lifx(self.device.get_extended_color_zones)
+
+    async def async_set_waveform_optional(
+        self, value: dict[str, Any], rapid: bool = False
+    ) -> None:
+        """Send a set_waveform_optional message to the device."""
+        await async_execute_lifx(
+            partial(self.device.set_waveform_optional, value=value, rapid=rapid)
         )
 
-    async def async_set_waveform_optional(self, value: dict[str, Any]) -> None:
-        """Send a set_waveform_optional message to the device."""
-        await self.async_lifx_method_as_coro(
-            partial(self.device.set_waveform_optional, value=value)
-        )
+    async def async_get_color(self) -> None:
+        """Send a get color message to the device."""
+        await async_execute_lifx(self.device.get_color)
 
     async def async_set_power(self, state: bool, duration: int | None) -> None:
         """Send a set power message to the device."""
-        await self.async_lifx_method_as_coro(
+        await async_execute_lifx(
             partial(self.device.set_power, state, duration=duration)
         )
 
@@ -324,7 +334,7 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
         self, hsbk: list[float | int | None], duration: int | None
     ) -> None:
         """Send a set color message to the device."""
-        await self.async_lifx_method_as_coro(
+        await async_execute_lifx(
             partial(self.device.set_color, hsbk, duration=duration)
         )
 
@@ -337,7 +347,7 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
         apply: int,
     ) -> None:
         """Send a set color zones message to the device."""
-        await self.async_lifx_method_as_coro(
+        await async_execute_lifx(
             partial(
                 self.device.set_color_zones,
                 start_index=start_index,
@@ -365,7 +375,7 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
             for _ in range(82 - len(colors)):
                 colors.append((0, 0, 0, 0))
 
-        await self.async_lifx_method_as_coro(
+        await async_execute_lifx(
             partial(
                 self.device.set_extended_color_zones,
                 colors=colors,
@@ -374,6 +384,11 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
                 apply=apply,
             )
         )
+
+    async def async_get_multizone_effect(self) -> None:
+        """Update the device firmware effect running state."""
+        await async_execute_lifx(self.device.get_multizone_effect)
+        self.active_effect = FirmwareEffect[self.device.effect.get("effect", "OFF")]
 
     async def async_set_multizone_effect(
         self,
@@ -384,8 +399,7 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
         power_on: bool = True,
     ) -> None:
         """Control the firmware-based Move effect on a multizone device."""
-        if self.lifx_features.get("multizone", False) is True:
-
+        if lifx_features(self.device)["multizone"] is True:
             if power_on and self.device.power_level == 0:
                 await self.async_set_power(True, 0)
 
@@ -395,7 +409,7 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
                     theme, [self.device], round(speed)
                 )
 
-            await self.async_lifx_method_as_coro(
+            await async_execute_lifx(
                 partial(
                     self.device.set_multizone_effect,
                     effect=MultiZoneEffectType[effect.upper()].value,
@@ -413,14 +427,14 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
         power_on: bool = True,
     ) -> None:
         """Control the firmware-based effects on a matrix device."""
-        if self.lifx_features.get("matrix", False) is True:
+        if lifx_features(self.device)["matrix"] is True:
             if power_on and self.device.power_level == 0:
                 await self.async_set_power(True, 0)
 
             if palette is None:
                 palette = []
 
-            await self.async_lifx_method_as_coro(
+            await async_execute_lifx(
                 partial(
                     self.device.set_tile_effect,
                     effect=TileEffectType[effect.upper()].value,
@@ -437,9 +451,7 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
     async def async_set_infrared_brightness(self, option: str) -> None:
         """Set infrared brightness."""
         infrared_brightness = infrared_brightness_option_to_value(option)
-        await self.async_lifx_method_as_coro(
-            partial(self.device.set_infrared, infrared_brightness)
-        )
+        await async_execute_lifx(partial(self.device.set_infrared, infrared_brightness))
 
     async def async_identify_bulb(self) -> None:
         """Identify the device by flashing it three times."""
@@ -465,30 +477,47 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator):
         self._update_rssi = True
         return _async_disable_rssi_updates
 
+    async def async_update_rssi(self) -> None:
+        """Update RSSI value."""
+        resp = await async_execute_lifx(self.device.get_wifiinfo)
+        self._rssi = int(floor(10 * log10(resp.signal) + 0.5))
+
+    def async_enable_zones_updates(self) -> Callable[[], None]:
+        """Enable zones state updates."""
+
+        @callback
+        def _async_disable_zones_updates() -> None:
+            """Disable zones state updates when sensor removed."""
+            self._update_zones = False
+
+        self._update_zones = True
+        self.hass.async_create_task(self.async_update_zones())
+        return _async_disable_zones_updates
+
+    async def async_update_zones(self) -> None:
+        """Update zone state from multizone devices."""
+        if lifx_features(self.device)["extended_multizone"] is True:
+            await self.async_get_extended_color_zones()
+        elif lifx_features(self.device)["multizone"] is True:
+            await self.async_get_color_zones()
+
     def async_get_hev_cycle_state(self) -> bool | None:
         """Return the current HEV cycle state."""
         if self.device.hev_cycle is None:
             return None
         return bool(self.device.hev_cycle.get(ATTR_REMAINING, 0) > 0)
 
+    async def async_get_hev_cycle(self) -> None:
+        """Update the HEV cycle status from a LIFX Clean bulb."""
+        if lifx_features(self.device)["hev"]:
+            await async_execute_lifx(self.device.get_hev_cycle)
+
     async def async_set_hev_cycle_state(self, enable: bool, duration: int = 0) -> None:
         """Start or stop an HEV cycle on a LIFX Clean bulb."""
-        if self.lifx_features.get("hev", False):
-            await self.async_lifx_method_as_coro(
-                partial(
-                    self.device.set_hev_cycle,
-                    enable=enable,
-                    duration=duration,
-                )
+        if lifx_features(self.device)["hev"]:
+            await async_execute_lifx(
+                partial(self.device.set_hev_cycle, enable=enable, duration=duration)
             )
-
-    async def async_update_rssi(self) -> None:
-        """Update RSSI value."""
-        resp: StateWifiInfo = await self.async_lifx_method_as_coro(
-            self.device.get_wifiinfo
-        )
-        if isinstance(resp, StateWifiInfo):
-            self.rssi = signal_to_rssi(resp.signal)
 
     async def async_apply_theme(self, theme_name: str) -> None:
         """Apply the selected theme to the device."""

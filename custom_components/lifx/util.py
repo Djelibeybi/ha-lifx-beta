@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from math import floor, log10
 from typing import Any
 
-from aiolifx.aiolifx import Light, features_map
+from aiolifx import products
+from aiolifx.aiolifx import Light
 from aiolifx.message import Message
 import async_timeout
 from awesomeversion import AwesomeVersion
@@ -37,7 +37,6 @@ from .const import (
 )
 
 FIX_MAC_FW = AwesomeVersion("3.70")
-INFLIGHT_LIMIT = asyncio.Semaphore(30)
 
 
 @callback
@@ -76,15 +75,12 @@ def convert_16_to_8(value: int) -> int:
     return value >> 8
 
 
-def lifx_features(light: Light) -> dict[str, Any]:
-    """Return a feature map for this light, or a default map if unknown."""
-    features: dict[str, Any] = features_map.get(light.product) or features_map[1]
+def lifx_features(bulb: Light) -> dict[str, Any]:
+    """Return a feature map for this bulb, or a default map if unknown."""
+    features: dict[str, Any] = (
+        products.features_map.get(bulb.product) or products.features_map[1]
+    )
     return features
-
-
-def signal_to_rssi(signal: float) -> int:
-    """Convert LIFX signal value to RSSI."""
-    return int(floor(10 * log10(signal) + 0.5))
 
 
 def find_hsbk(hass: HomeAssistant, **kwargs: Any) -> list[float | int | None] | None:
@@ -120,7 +116,8 @@ def find_hsbk(hass: HomeAssistant, **kwargs: Any) -> list[float | int | None] | 
 
     if ATTR_KELVIN in kwargs:
         _LOGGER.warning(
-            "The 'kelvin' parameter is deprecated. Use 'color_temp_kelvin' instead"
+            "The 'kelvin' parameter is deprecated. Please use 'color_temp_kelvin' for"
+            " all service calls"
         )
         kelvin = kwargs.pop(ATTR_KELVIN)
         saturation = 0
@@ -185,21 +182,30 @@ def mac_matches_serial_number(mac_addr: str, serial_number: str) -> bool:
     )
 
 
-async def async_execute_lifx(method: Callable) -> Message | None:
+async def async_execute_lifx(method: Callable) -> Message:
     """Execute a lifx coroutine and wait for a response."""
+    future: asyncio.Future[Message] = asyncio.Future()
 
-    future: asyncio.Future[Message] = asyncio.get_event_loop().create_future()
-
-    def _callback(light: Light, message: Message) -> None:
-
-        if light.mac_addr == TARGET_ANY and message is not None:
-            light.mac_addr = message.target_addr
-
+    def _callback(bulb: Light, message: Message) -> None:
         if not future.done():
+            # The future will get canceled out from under
+            # us by async_timeout when we hit the OVERALL_TIMEOUT
+
+            if (
+                bulb.mac_addr == TARGET_ANY
+                and message is not None
+                and message.target_addr != TARGET_ANY
+            ):
+                bulb.mac_addr = message.target_addr
+
             future.set_result(message)
 
     method(callb=_callback)
-    async with INFLIGHT_LIMIT, async_timeout.timeout(OVERALL_TIMEOUT):
-        message: Message = await future
+    result = None
 
-    return message
+    async with async_timeout.timeout(OVERALL_TIMEOUT):
+        result = await future
+
+    if result is None:
+        raise asyncio.TimeoutError("No response from LIFX bulb")
+    return result

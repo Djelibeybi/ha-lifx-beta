@@ -5,7 +5,7 @@ import asyncio
 import socket
 from typing import Any
 
-from aiolifx.aiolifx import Light, product_map
+from aiolifx.aiolifx import Light
 from aiolifx.connection import LIFXConnection
 import voluptuous as vol
 
@@ -19,7 +19,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.typing import DiscoveryInfoType
 
 from .const import _LOGGER, CONF_SERIAL, DOMAIN, TARGET_ANY
-from .discovery import LIFXConnectivityManager
+from .discovery import async_discover_devices
 from .util import (
     async_entry_is_legacy,
     async_execute_lifx,
@@ -119,11 +119,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore
         assert self._discovered_device is not None
         discovered = self._discovered_device
         _LOGGER.debug(
-            "Found: %s [%s] [%s] [%s]",
+            "Confirming discovery of %s (%s) [%s]",
             discovered.label,
-            product_map[discovered.product],
-            str(self.unique_id).replace(":", ""),
-            discovered.ip_addr,
+            discovered.group,
+            discovered.mac_addr,
         )
         if user_input is not None or self._async_discovered_pending_migration():
             return self._async_create_entry_from_device(discovered)
@@ -132,8 +131,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore
         self._set_confirm_only()
         placeholders = {
             "label": discovered.label,
-            "host": discovered.ip_addr,
-            "serial": str(self.unique_id).replace(":", ""),
+            "group": discovered.group,
         }
         self.context["title_placeholders"] = placeholders
         return self.async_show_form(
@@ -186,9 +184,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore
         self._discovered_devices = {
             # device.mac_addr is not the mac_address, its the serial number
             device.mac_addr: device
-            for device in await LIFXConnectivityManager(
-                self.hass
-            ).async_discover_devices()
+            for device in await async_discover_devices(self.hass)
         }
         devices_name = {
             serial: f"{serial} ({device.ip_addr})"
@@ -225,6 +221,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore
             return None
         device: Light = connection.device
         try:
+            # get_hostfirmware required for MAC address offset
+            # get_version required for lifx_features()
+            # get_label required to log the name of the device
+            # get_group required to populate suggested areas
             messages = await asyncio.gather(
                 *[
                     async_execute_lifx(device.get_hostfirmware),
@@ -238,12 +238,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore
         finally:
             connection.async_stop()
         if (
-            len(messages) != 4  # if not all responses are received
-            or None in messages  # if any of them are empty
-            or lifx_features(device)["relays"] is True  # if the device has relays
+            messages is None
+            or len(messages) != 4
+            or lifx_features(device)["relays"] is True
+            or device.host_firmware_version is None
         ):
-            # not supported so return
-            return None
+            return None  # relays not supported
         # device.mac_addr is not the mac_address, its the serial number
         device.mac_addr = serial or messages[0].target_addr
         await self.async_set_unique_id(

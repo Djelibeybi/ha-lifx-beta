@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Any
 
 import aiolifx_effects
@@ -28,9 +29,11 @@ from homeassistant.core import HomeAssistant, ServiceCall, callback
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.service import async_extract_referenced_entity_ids
 
-from .const import _LOGGER, ATTR_THEME, DATA_LIFX_CONNECT, DATA_LIFX_MANAGER, DOMAIN
+from .const import ATTR_THEME, DATA_LIFX_MANAGER, DOMAIN
 from .coordinator import LIFXUpdateCoordinator, Light
 from .util import convert_8_to_16, find_hsbk
+
+SCAN_INTERVAL = timedelta(seconds=10)
 
 SERVICE_EFFECT_COLORLOOP = "effect_colorloop"
 SERVICE_EFFECT_FLAME = "effect_flame"
@@ -274,12 +277,9 @@ class LIFXManager:
 
         for entry_id, coordinator in self.hass.data[DOMAIN].items():
             if (
-                entry_id not in [DATA_LIFX_MANAGER, DATA_LIFX_CONNECT]
+                entry_id != DATA_LIFX_MANAGER
                 and self.entry_id_to_entity_id[entry_id] in entity_ids
             ):
-                _LOGGER.debug(
-                    "Adding %s to the effect conductor.", coordinator.device.label
-                )
                 coordinators.append(coordinator)
                 bulbs.append(coordinator.device)
 
