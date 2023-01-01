@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from awesomeversion import AwesomeVersion
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -11,20 +10,16 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    SIGNAL_STRENGTH_DECIBELS,
-    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
-)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import ATTR_RSSI, DOMAIN
+from .const import ATTR_RSSI, ATTR_ZONES, DOMAIN
 from .coordinator import LIFXUpdateCoordinator
 from .entity import LIFXEntity
+from .util import lifx_features
 
-RSSI_DBM_FW = AwesomeVersion("2.77")
-
+SCAN_INTERVAL = timedelta(seconds=30)
 
 RSSI_SENSOR = SensorEntityDescription(
     key=ATTR_RSSI,
@@ -35,6 +30,14 @@ RSSI_SENSOR = SensorEntityDescription(
     entity_registry_enabled_default=False,
 )
 
+ZONES_SENSOR = SensorEntityDescription(
+    key=ATTR_ZONES,
+    name="Zones",
+    entity_category=EntityCategory.DIAGNOSTIC,
+    state_class=SensorStateClass.MEASUREMENT,
+    entity_registry_enabled_default=True,
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
@@ -42,6 +45,44 @@ async def async_setup_entry(
     """Set up LIFX sensor from config entry."""
     coordinator: LIFXUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([LIFXRssiSensor(coordinator, RSSI_SENSOR)])
+
+    if lifx_features(coordinator.device)["multizone"]:
+        async_add_entities([LIFXZonesSensor(coordinator, ZONES_SENSOR)])
+
+
+class LIFXZonesSensor(LIFXEntity, SensorEntity):
+    """LIFX Zones sensor for linear multizone devices."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: LIFXUpdateCoordinator,
+        description: SensorEntityDescription,
+    ) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_name = description.name
+        self._attr_unique_id = f"{coordinator.serial_number}_{description.key}"
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self._async_update_attrs()
+        super()._handle_coordinator_update()
+
+    @callback
+    def _async_update_attrs(self) -> None:
+        """Handle coordinator updates."""
+        self._attr_native_value = self.coordinator.zones_count
+        self._attr_extra_state_attributes = self.coordinator.zone_colors
+
+    @callback
+    async def async_added_to_hass(self) -> None:
+        """Enable zones updates."""
+        self.async_on_remove(self.coordinator.async_enable_zones_updates())
+        return await super().async_added_to_hass()
 
 
 class LIFXRssiSensor(LIFXEntity, SensorEntity):
@@ -60,15 +101,7 @@ class LIFXRssiSensor(LIFXEntity, SensorEntity):
         self.entity_description = description
         self._attr_name = description.name
         self._attr_unique_id = f"{coordinator.serial_number}_{description.key}"
-
-    @property
-    def native_unit_of_measurement(self) -> str | None:
-        """Return native unit of measurement."""
-        if self.bulb.host_firmware_version is not None:
-            if AwesomeVersion(self.bulb.host_firmware_version) <= RSSI_DBM_FW:
-                return SIGNAL_STRENGTH_DECIBELS
-            return SIGNAL_STRENGTH_DECIBELS_MILLIWATT
-        return None
+        self._attr_native_unit_of_measurement = coordinator.rssi_uom
 
     @callback
     def _handle_coordinator_update(self) -> None:
