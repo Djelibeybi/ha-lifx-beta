@@ -201,3 +201,7 @@ async def async_execute_lifx(method: Callable) -> Message:
         raise asyncio.TimeoutError("No response from LIFX bulb")
 
     return result
+
+
+# def process_lifx_response(method: Callable, message: Message) -> None:
+#   """Process message based on the method used."""
