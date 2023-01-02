@@ -6,7 +6,8 @@ import socket
 from typing import Any
 
 from aiolifx.aiolifx import Light
-from aiolifx.connection import LIFXConnection
+
+# from aiolifx.connection import LIFXConnection
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -18,6 +19,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.typing import DiscoveryInfoType
 
+from .connection import LIFXCustomConnection
 from .const import _LOGGER, CONF_SERIAL, DOMAIN, TARGET_ANY
 from .discovery import async_discover_devices
 from .util import (
@@ -214,7 +216,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore
     ) -> Light | None:
         """Try to connect."""
         self._async_abort_entries_match({CONF_HOST: host})
-        connection = LIFXConnection(host, TARGET_ANY)
+        connection = LIFXCustomConnection(host, TARGET_ANY)
         try:
             await connection.async_setup()
         except socket.gaierror:

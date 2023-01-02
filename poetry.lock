@@ -134,6 +134,14 @@ optional = false
 python-versions = ">=3.7,<4.0"
 
 [[package]]
+name = "backoff"
+version = "2.2.1"
+description = "Function decoration for backoff and retry"
+category = "main"
+optional = false
+python-versions = ">=3.7,<4.0"
+
+[[package]]
 name = "bcrypt"
 version = "3.1.7"
 description = "Modern password hashing for your software and your servers"
@@ -1019,7 +1027,7 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.9"
-content-hash = "77d4f7680f76df504e82f12a41ef9a74b57901253bd6108643f60f80dc57cafa"
+content-hash = "c96d87870f012d2fe3e193cb4420351de9de5642ca0ee5f57c568645ccc10b76"
 
 [metadata.files]
 aiohttp = [
@@ -1135,6 +1143,10 @@ attrs = [
 awesomeversion = [
     {file = "awesomeversion-22.9.0-py3-none-any.whl", hash = "sha256:f4716e1e65ea1194be03f312f2b2643a8b76326c59538ddc5353642616ead82a"},
     {file = "awesomeversion-22.9.0.tar.gz", hash = "sha256:2f4190d333e81e10b2a4e156150ddb3596f5f11da67e9d51ba39057aa7a17f7e"},
+]
+backoff = [
+    {file = "backoff-2.2.1-py3-none-any.whl", hash = "sha256:63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8"},
+    {file = "backoff-2.2.1.tar.gz", hash = "sha256:03f829f5bb1923180821643f8753b0502c3b682293992485b0eef2807afa5cba"},
 ]
 bcrypt = [
     {file = "bcrypt-3.1.7-cp27-cp27m-macosx_10_6_intel.whl", hash = "sha256:d7bdc26475679dd073ba0ed2766445bb5b20ca4793ca0db32b399dccc6bc84b7"},
