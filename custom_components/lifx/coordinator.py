@@ -15,9 +15,6 @@ from aiolifx.aiolifx import (
     MultiZoneEffectType,
     TileEffectType,
 )
-
-# from aiolifx.connection import LIFXConnection
-# from aiolifx.message import Message
 from aiolifx_themes.themes import ThemeLibrary, ThemePainter
 from awesomeversion import AwesomeVersion
 
@@ -29,7 +26,10 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.debounce import Debouncer
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import (
+    ConfigEntryNotReady,
+    DataUpdateCoordinator,
+)
 
 from .connection import LIFXCustomConnection
 from .const import (
@@ -117,20 +117,9 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
             _setup_tasks.append(self.connection.async_get(self.device.get_group))
 
         if len(_setup_tasks) > 0:
-
-            task_names = [task.__name__ for task in _setup_tasks]  # type: ignore
-            messages = await asyncio.gather(*_setup_tasks)
-
+            await asyncio.gather(*_setup_tasks, return_exceptions=True)
             while len(self.device.message) > 0:
-                _LOGGER.debug(
-                    "Waiting for message queue to empty: %s left",
-                    len(self.device.message),
-                )
                 await asyncio.sleep(0)  # pragma: no cover
-
-            for idx, message in enumerate(messages):
-                if message is None:
-                    _LOGGER.debug("Empty reply received to %s request", task_names[idx])
 
     @property
     def serial_number(self) -> str:
@@ -237,59 +226,65 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
     async def _async_update_data(self) -> None:
         """Fetch all device data from the api."""
 
-        _tasks: list[Awaitable | Callable] = [
-            self.connection.async_get(self.device.get_color)
-        ]
+        async with self.lock:
 
-        if self.device.host_firmware_version is None:
-            _tasks.append(self.connection.async_get(self.device.get_hostfirmware))
+            _tasks: list[Awaitable | Callable] = [
+                self.connection.async_get(self.device.get_color)
+            ]
 
-        if self.device.product is None:
-            _tasks.append(self.connection.async_get(self.device.get_version))
+            if self.device.host_firmware_version is None:
+                _tasks.append(self.connection.async_get(self.device.get_hostfirmware))
 
-        if self.device.group is None:
-            _tasks.append(self.connection.async_get(self.device.get_group))
+            if self.device.product is None:
+                _tasks.append(self.connection.async_get(self.device.get_version))
 
-        # Update extended multizone devices
-        if lifx_features(self.device)["extended_multizone"]:
-            _tasks.append(
-                self.connection.async_get(self.device.get_extended_color_zones)
-            )
-            _tasks.append(self.async_get_multizone_effect())
-            # use legacy methods for older devices
-        elif lifx_features(self.device)["multizone"]:
-            _tasks.append(self.async_get_color_zones())
-            _tasks.append(self.async_get_multizone_effect())
+            if self.device.group is None:
+                _tasks.append(self.connection.async_get(self.device.get_group))
 
-        if self._update_rssi is True:
-            _tasks.append(self.async_update_rssi())
+            if self._update_rssi is True:
+                _tasks.append(self.async_update_rssi())
 
-        if self._update_zones is True:
-            _tasks.append(self.async_update_zones())
-
-        if lifx_features(self.device)["hev"]:
-            _tasks.append(self.connection.async_get(self.device.get_hev_cycle))
-
-        if lifx_features(self.device)["infrared"]:
-            _tasks.append(self.connection.async_get(self.device.get_infrared))
-
-        task_names = [task.__name__ for task in _tasks]  # type: ignore
-        messages = await asyncio.gather(*_tasks)  # type: ignore
-
-        while len(self.device.message) > 0:
-            _LOGGER.debug(  # pragma: no cover
-                "aiolifx message queue: %s left", len(self.device.message)
-            )
-            await asyncio.sleep(0)  # pragma: no cover
-
-        for idx, message in enumerate(messages):
-            if task_names[idx] == "self.connection.async_get" and message is None:
-                _LOGGER.debug(
-                    "Received empty response to %s for %s (%s)",
-                    task_names[idx],
-                    self.device.label,
-                    self.device.ip_addr,
+            # This is usually True
+            if self._update_zones is True:
+                _tasks.append(self.async_update_zones())
+            # Update extended multizone devices
+            elif lifx_features(self.device)["extended_multizone"]:
+                _tasks.append(
+                    self.connection.async_get(self.device.get_extended_color_zones)
                 )
+                _tasks.append(self.async_get_multizone_effect())
+            # use legacy methods for older devices
+            elif lifx_features(self.device)["multizone"]:
+                _tasks.append(self.async_get_color_zones())
+                _tasks.append(self.async_get_multizone_effect())
+
+            if lifx_features(self.device)["hev"]:
+                _tasks.append(self.connection.async_get(self.device.get_hev_cycle))
+
+            if lifx_features(self.device)["infrared"]:
+                _tasks.append(self.connection.async_get(self.device.get_infrared))
+
+            task_names = [task.__name__ for task in _tasks]  # type: ignore
+            try:
+                messages = await asyncio.gather(*_tasks)  # type: ignore
+            except asyncio.TimeoutError as exc:
+                raise ConfigEntryNotReady() from exc
+
+            while len(self.device.message) > 0:
+                _LOGGER.debug(  # pragma: no cover
+                    "aiolifx message queue: %s left", len(self.device.message)
+                )
+                await asyncio.sleep(0)  # pragma: no cover
+
+            for idx, message in enumerate(messages):
+
+                if task_names[idx] == "self.connection.async_get" and message is None:
+                    _LOGGER.debug(
+                        "Received empty response to %s for %s (%s)",
+                        task_names[idx],
+                        self.device.label,
+                        self.device.ip_addr,
+                    )
 
     async def async_get_color_zones(self) -> None:
         """Get updated color information for each zone."""
@@ -502,6 +497,8 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
             await self.async_get_extended_color_zones()
         elif lifx_features(self.device)["multizone"] is True:
             await self.async_get_color_zones()
+
+        await self.async_get_multizone_effect()
 
     def async_get_hev_cycle_state(self) -> bool | None:
         """Return the current HEV cycle state."""

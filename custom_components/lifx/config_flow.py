@@ -6,8 +6,6 @@ import socket
 from typing import Any
 
 from aiolifx.aiolifx import Light
-
-# from aiolifx.connection import LIFXConnection
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -24,7 +22,6 @@ from .const import _LOGGER, CONF_SERIAL, DOMAIN, TARGET_ANY
 from .discovery import async_discover_devices
 from .util import (
     async_entry_is_legacy,
-    async_execute_lifx,
     async_get_legacy_entry,
     formatted_serial,
     lifx_features,
@@ -229,10 +226,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore
             # get_group required to populate suggested areas
             messages = await asyncio.gather(
                 *[
-                    async_execute_lifx(device.get_hostfirmware),
-                    async_execute_lifx(device.get_version),
-                    async_execute_lifx(device.get_label),
-                    async_execute_lifx(device.get_group),
+                    connection.async_get(device.get_hostfirmware),
+                    connection.async_get(device.get_version),
+                    connection.async_get(device.get_label),
+                    connection.async_get(device.get_group),
                 ]
             )
         except asyncio.TimeoutError:
