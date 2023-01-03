@@ -6,7 +6,7 @@ This is a pre-release/testing version of the core LIFX integration. This repo
 exists purely to make it easier to install the test version via HACS instead of
 having to do it manually.
 
-## Current version: `2023.1.0b3`
+## Current version: `2023.1.0b4`
 
 ### Changes from 2023.1.0b2
 
