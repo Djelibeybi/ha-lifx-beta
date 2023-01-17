@@ -26,7 +26,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.debounce import Debouncer
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .connection import LIFXCustomConnection
 from .const import (
@@ -270,13 +270,13 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
             for idx, message in enumerate(messages):
 
                 if isinstance(message, Exception):
-                    raise UpdateFailed(
-                        f"Failed to update {self.device.label}: {message}"
-                    )
+                    _LOGGER.debug("Failed to update %s: %s", self.device.label, message)
 
                 if task_names[idx] == "self.connection.async_get" and message is None:
-                    raise UpdateFailed(
-                        f"Received empty response from {self.device.label} ({self.device.ip_addr})"
+                    _LOGGER.debug(
+                        "Received empty response from %s (%s)",
+                        self.device.label,
+                        self.device.ip_addr,
                     )
 
     async def async_get_color_zones(self) -> None:
