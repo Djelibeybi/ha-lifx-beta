@@ -8,7 +8,7 @@ from aiolifx.aiolifx import UDP_BROADCAST_PORT, Light
 from aiolifx.message import Message
 import async_timeout
 
-from .const import OVERALL_TIMEOUT, TARGET_ANY
+from .const import _LOGGER, OVERALL_TIMEOUT, TARGET_ANY
 
 
 class LIFXCustomConnection:
@@ -67,8 +67,8 @@ class LIFXCustomConnection:
                 await asyncio.sleep(0)
 
             if message is None:
-                raise asyncio.TimeoutError(
-                    f"No response from {light.label} ({light.ip_addr}) [{light.mac_addr}]"
+                _LOGGER.debug(
+                    "Received empty response from %s (%s)", light.label, light.ip_addr
                 )
 
         return message
