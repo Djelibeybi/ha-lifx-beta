@@ -6,9 +6,9 @@ This is a pre-release/testing version of the core LIFX integration. This repo
 exists purely to make it easier to install the test version via HACS instead of
 having to do it manually.
 
-## Current version: `2023.1.0b5`
+## Current version: `2023.1.0b6`
 
-This release will never offline a bulb. Essentially, instead of raising an exception when an empty response is received (which is what happens when the bulb just doesn't respond), it will send a debug log with a message instead.
+This release will very rarely make a bulb unavailable. Only when the bulb doesn't respond at all to any requests (i.e. it's been powered off or similar) will the device be unavailable. If a bulb just takes a long time to respond or fails to respond to a single query out of a set, the integration will just ignore it.
 
 _The goal of this release is to get your subjective opinion on the stability of your LIFX bulbs._
 
