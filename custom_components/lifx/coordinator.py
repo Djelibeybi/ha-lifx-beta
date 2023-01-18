@@ -26,7 +26,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.debounce import Debouncer
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .connection import LIFXCustomConnection
 from .const import (
@@ -270,7 +270,9 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
             for idx, message in enumerate(messages):
 
                 if isinstance(message, Exception):
-                    _LOGGER.debug("Failed to update %s: %s", self.device.label, message)
+                    raise UpdateFailed(
+                        f"Failed to update {self.device.label}: {message}"
+                    )
 
                 if task_names[idx] == "self.connection.async_get" and message is None:
                     _LOGGER.debug(
