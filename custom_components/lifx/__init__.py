@@ -8,6 +8,7 @@ import socket
 from typing import Any
 
 from aiolifx.aiolifx import Light
+from aiolifx.connection import LIFXConnection
 import voluptuous as vol
 
 from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
@@ -25,7 +26,6 @@ import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
 
-from .connection import LIFXCustomConnection
 from .const import _LOGGER, DATA_LIFX_MANAGER, DOMAIN, TARGET_ANY
 from .coordinator import LIFXUpdateCoordinator
 from .discovery import async_discover_devices, async_trigger_discovery
@@ -207,14 +207,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         manager.async_setup()
 
     host = entry.data[CONF_HOST]
-    connection = LIFXCustomConnection(host, TARGET_ANY)
+    connection = LIFXConnection(host, TARGET_ANY)
     try:
         await connection.async_setup()
     except socket.gaierror as ex:
         connection.async_stop()
         raise ConfigEntryNotReady(f"Could not resolve {host}: {ex}") from ex
     coordinator = LIFXUpdateCoordinator(hass, connection, entry.title)
-    await coordinator.async_setup()
+    coordinator.async_setup()
     try:
         await coordinator.async_config_entry_first_refresh()
     except ConfigEntryNotReady:

@@ -6,20 +6,21 @@ This is a pre-release/testing version of the core LIFX integration. This repo
 exists purely to make it easier to install the test version via HACS instead of
 having to do it manually.
 
-## Current version: `2023.1.0b6`
+## Current version: `2023.2.0b1`
 
-This release will very rarely make a bulb unavailable. Only when the bulb doesn't respond at all to any requests (i.e. it's been powered off or similar) will the device be unavailable. If a bulb just takes a long time to respond or fails to respond to a single query out of a set, the integration will just ignore it.
-
-_The goal of this release is to get your subjective opinion on the stability of your LIFX bulbs._
-
-My assumption after limited testing on my own fleet is that most folks won't actually notice when a bulb doesn't respond because the integration will either try again or something else will happen and the bulb will respond again soon enough.
+This is a "return to basics" release: I reverted back to the core integration then thought about the
+things thaT were added to create the "new" LIFX integration, i.e. the per-device connection, the locks
+and the sensor coordinator. I then removed two of those things: the locks and the second coordinator.
 
 _Please use the release discussion topic to provide feedback on how your fleet reponds._
+
+### Changes from 2023.1.0 b6
+
+* reverted code back to the core integration, then removed the device-wide lock and sensor coordinator.
 
 ### Changes from 2023.1.0.b4
 
 * log empty responses instead of raising exceptions
-
 
 ### Changes from 2023.1.0b2
 
