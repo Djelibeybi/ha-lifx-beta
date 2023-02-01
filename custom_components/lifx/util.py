@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Callable
 from typing import Any
 
 from aiolifx import products
 from aiolifx.aiolifx import Light
+from aiolifx.message import Message
+import async_timeout
 from awesomeversion import AwesomeVersion
 
 from homeassistant.components.light import (
@@ -24,7 +28,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 import homeassistant.util.color as color_util
 
-from .const import _LOGGER, DOMAIN, INFRARED_BRIGHTNESS_VALUES_MAP
+from .const import _LOGGER, DOMAIN, INFRARED_BRIGHTNESS_VALUES_MAP, OVERALL_TIMEOUT
 
 FIX_MAC_FW = AwesomeVersion("3.70")
 
@@ -170,3 +174,24 @@ def mac_matches_serial_number(mac_addr: str, serial_number: str) -> bool:
         formatted_serial(serial_number) == formatted_mac
         or _get_mac_offset(serial_number, 1) == formatted_mac
     )
+
+
+async def async_execute_lifx(method: Callable) -> Message:
+    """Execute a lifx coroutine and wait for a response."""
+    future: asyncio.Future[Message] = asyncio.Future()
+
+    def _callback(bulb: Light, message: Message) -> None:
+        if not future.done():
+            # The future will get canceled out from under
+            # us by async_timeout when we hit the OVERALL_TIMEOUT
+            future.set_result(message)
+
+    method(callb=_callback)
+    result = None
+
+    async with async_timeout.timeout(OVERALL_TIMEOUT):
+        result = await future
+
+    if result is None:
+        raise asyncio.TimeoutError("No response from LIFX bulb")
+    return result

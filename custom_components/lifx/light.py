@@ -122,6 +122,7 @@ class LIFXLight(LIFXEntity, LightEntity):
         """Initialize the light."""
         super().__init__(coordinator)
 
+        self.lock = asyncio.Lock()
         self.mac_addr = self.bulb.mac_addr
         bulb_features = lifx_features(self.bulb)
         self.manager = manager
@@ -206,7 +207,7 @@ class LIFXLight(LIFXEntity, LightEntity):
     async def set_state(self, **kwargs: Any) -> None:
         """Set a color on the light and turn it on/off."""
         self.coordinator.async_set_updated_data(None)
-        async with self.coordinator.lock:
+        async with self.lock:
             # Cancel any pending refreshes
             bulb = self.bulb
 
@@ -283,8 +284,10 @@ class LIFXLight(LIFXEntity, LightEntity):
         duration: int = 0,
     ) -> None:
         """Send a power change to the bulb."""
-
-        await self.coordinator.async_set_power(pwr, duration)
+        try:
+            await self.coordinator.async_set_power(pwr, duration)
+        except asyncio.TimeoutError as ex:
+            raise HomeAssistantError(f"Timeout setting power for {self.name}") from ex
 
     async def set_color(
         self,
@@ -294,13 +297,21 @@ class LIFXLight(LIFXEntity, LightEntity):
     ) -> None:
         """Send a color change to the bulb."""
         merged_hsbk = merge_hsbk(self.bulb.color, hsbk)
-        await self.coordinator.async_set_color(merged_hsbk, duration)
+        try:
+            await self.coordinator.async_set_color(merged_hsbk, duration)
+        except asyncio.TimeoutError as ex:
+            raise HomeAssistantError(f"Timeout setting color for {self.name}") from ex
 
     async def get_color(
         self,
     ) -> None:
         """Send a get color message to the bulb."""
-        await self.coordinator.async_get_color()
+        try:
+            await self.coordinator.async_get_color()
+        except asyncio.TimeoutError as ex:
+            raise HomeAssistantError(
+                f"Timeout setting getting color for {self.name}"
+            ) from ex
 
     async def default_effect(self, **kwargs: Any) -> None:
         """Start an effect with default parameters."""
@@ -408,9 +419,14 @@ class LIFXMultiZone(LIFXColor):
         for index, zone in enumerate(zones):
             zone_hsbk = merge_hsbk(color_zones[zone], hsbk)
             apply = 1 if (index == len(zones) - 1) else 0
-            await self.coordinator.async_set_color_zones(
-                zone, zone, zone_hsbk, duration, apply
-            )
+            try:
+                await self.coordinator.async_set_color_zones(
+                    zone, zone, zone_hsbk, duration, apply
+                )
+            except asyncio.TimeoutError as ex:
+                raise HomeAssistantError(
+                    f"Timeout setting color zones for {self.name}"
+                ) from ex
 
         # set_color_zones does not update the
         # state of the device, so we need to do that
@@ -420,8 +436,12 @@ class LIFXMultiZone(LIFXColor):
         self,
     ) -> None:
         """Send a get color zones message to the device."""
-
-        await self.coordinator.async_get_color_zones()
+        try:
+            await self.coordinator.async_get_color_zones()
+        except asyncio.TimeoutError as ex:
+            raise HomeAssistantError(
+                f"Timeout getting color zones from {self.name}"
+            ) from ex
 
 
 class LIFXExtendedMultiZone(LIFXMultiZone):
@@ -447,10 +467,14 @@ class LIFXExtendedMultiZone(LIFXMultiZone):
                     color_zones[index] = merge_hsbk(zone, hsbk)
 
         # send the updated color zones list to the device
-
-        await self.coordinator.async_set_extended_color_zones(
-            color_zones, duration=duration
-        )
+        try:
+            await self.coordinator.async_set_extended_color_zones(
+                color_zones, duration=duration
+            )
+        except asyncio.TimeoutError as ex:
+            raise HomeAssistantError(
+                f"Timeout setting color zones on {self.name}"
+            ) from ex
 
         # set_extended_color_zones does not update the
         # state of the device, so we need to do that
