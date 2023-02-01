@@ -9,7 +9,7 @@ having to do it manually.
 ## Current version: `2023.2.0b1`
 
 This is a "return to basics" release: I reverted back to the core integration then thought about the
-things thaT were added to create the "new" LIFX integration, i.e. the per-device connection, the locks
+things that were added to create the "new" LIFX integration, i.e. the per-device connection, the locks
 and the sensor coordinator. I then removed two of those things: the locks and the second coordinator.
 
 _Please use the release discussion topic to provide feedback on how your fleet reponds._
