@@ -181,7 +181,7 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
         try:
             await self._async_update_lifx_data()
         except asyncio.TimeoutError:
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "Time out updating %s (%s). Reconnecting.",
                 self.device.ip_addr,
                 self.device.mac_addr,
