@@ -1,13 +1,13 @@
 {
   "domain": "lifx",
   "name": "LIFX",
-  "version": "2023.2.0b1",
+  "version": "2023.2.0b2",
   "config_flow": true,
   "documentation": "https://github.com/Djelibeybi/ha-lifx-beta",
   "requirements": [
-    "aiolifx==0.8.7",
+    "aiolifx==0.8.8",
     "aiolifx_effects==0.3.1",
-    "aiolifx_themes==0.4.0"
+    "aiolifx_themes==0.4.1"
   ],
   "quality_scale": "platinum",
   "dependencies": ["network"],
