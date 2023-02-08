@@ -37,7 +37,6 @@ from .const import (
     IDENTIFY_WAVEFORM,
     MESSAGE_RETRIES,
     MESSAGE_TIMEOUT,
-    TARGET_ANY,
     UNAVAILABLE_GRACE,
 )
 from .util import (
@@ -75,8 +74,7 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
     ) -> None:
         """Initialize DataUpdateCoordinator."""
         assert connection.device is not None
-        self.connection = connection
-        self.device: Light = connection.device
+        self._connection = connection
         self.active_effect = FirmwareEffect.OFF
         self._update_rssi: bool = False
         self._rssi: int = 0
@@ -100,6 +98,16 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
         self.device.timeout = MESSAGE_TIMEOUT
         self.device.retry_count = MESSAGE_RETRIES
         self.device.unregister_timeout = UNAVAILABLE_GRACE
+
+    @callback
+    def async_stop(self) -> None:
+        """Stop the connection."""
+        self._connection.async_stop()
+
+    @property
+    def device(self) -> Light:
+        """Return the device."""
+        return self._connection.device
 
     @property
     def serial_number(self) -> str:
@@ -168,42 +176,51 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
         )
 
     async def _async_update_data(self) -> None:
-        """Fetch all device data from the api."""
+        """Fetch all device data."""
+
+        try:
+            await self._async_update_lifx_data()
+        except asyncio.TimeoutError:
+            _LOGGER.warning(
+                "Time out updating %s (%s). Reconnecting.",
+                self.device.ip_addr,
+                self.device.mac_addr,
+            )
+            self._connection.async_stop()
+            await self._connection.async_setup()
+            await self._async_update_lifx_data()
+
+    async def _async_update_lifx_data(self) -> None:
+        """Fetch all LIFX data from the device."""
 
         if self.device.host_firmware_version is None:
-            self.device.get_hostfirmware()
+            await async_execute_lifx(self.device.get_hostfirmware)
         if self.device.product is None:
-            self.device.get_version()
+            await async_execute_lifx(self.device.get_version)
         if self.device.group is None:
-            self.device.get_group()
+            await async_execute_lifx(self.device.get_group)
 
-        response = await async_execute_lifx(self.device.get_color)
+        await async_execute_lifx(self.device.get_color)
 
-        if self.device.product is None:
-            raise UpdateFailed(
-                f"Failed to fetch get version from device: {self.device.ip_addr}"
-            )
-
-        # device.mac_addr is not the mac_address, its the serial number
-        if self.device.mac_addr == TARGET_ANY:
-            self.device.mac_addr = response.target_addr
+        if self.device.host_firmware_version is None or self.device.product is None:
+            raise UpdateFailed(f"Failed to update device: {self.device.ip_addr}")
 
         # Update extended multizone devices
-        if lifx_features(self.device)["extended_multizone"]:
+        if lifx_features(self.device)["extended_multizone"] is True:
             await self.async_get_extended_color_zones()
             await self.async_get_multizone_effect()
         # use legacy methods for older devices
-        elif lifx_features(self.device)["multizone"]:
+        elif lifx_features(self.device)["multizone"] is True:
             await self.async_get_color_zones()
             await self.async_get_multizone_effect()
 
         if self._update_rssi is True:
             await self.async_update_rssi()
 
-        if lifx_features(self.device)["hev"]:
+        if lifx_features(self.device)["hev"] is True:
             await self.async_get_hev_cycle()
 
-        if lifx_features(self.device)["infrared"]:
+        if lifx_features(self.device)["infrared"] is True:
             await async_execute_lifx(self.device.get_infrared)
 
     async def async_get_color_zones(self) -> None:
