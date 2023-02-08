@@ -6,13 +6,19 @@ This is a pre-release/testing version of the core LIFX integration. This repo
 exists purely to make it easier to install the test version via HACS instead of
 having to do it manually.
 
-## Current version: `2023.2.0b2`
+## Current version: `2023.2.1b1`
 
-This is a "return to basics" release: I reverted back to the core integration then thought about the
-things that were added to create the "new" LIFX integration, i.e. the per-device connection, the locks
-and the sensor coordinator. I then removed two of those things: the locks and the second coordinator.
+This version implements the proposed fix from <https://github.com/home-assistant/core/pull/87736>
+so that it can be tested with the other refactoring done previously, i.e. removal of the locking
+mechanism and the sensor coordinator.
 
 _Please use the release discussion topic to provide feedback on how your fleet reponds._
+
+### Changes from 2023.2.0 b2
+
+* Port of the proposed Core PR to re-establish the connection to the LIFX device if an update times out:
+  <https://github.com/home-assistant/core/pull/87736>
+* Revers the dependency update as the update was broken.
 
 ### Changes from 2023.2.0 b1
 
