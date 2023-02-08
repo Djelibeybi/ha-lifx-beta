@@ -6,13 +6,17 @@ This is a pre-release/testing version of the core LIFX integration. This repo
 exists purely to make it easier to install the test version via HACS instead of
 having to do it manually.
 
-## Current version: `2023.2.0b1`
+## Current version: `2023.2.0b2`
 
 This is a "return to basics" release: I reverted back to the core integration then thought about the
 things that were added to create the "new" LIFX integration, i.e. the per-device connection, the locks
 and the sensor coordinator. I then removed two of those things: the locks and the second coordinator.
 
 _Please use the release discussion topic to provide feedback on how your fleet reponds._
+
+### Changes from 2023.2.0 b1
+
+* Dependency update to add product definitions for the new LIFX Downlight.
 
 ### Changes from 2023.1.0 b6
 
