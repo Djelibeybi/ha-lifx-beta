@@ -122,7 +122,6 @@ class LIFXLight(LIFXEntity, LightEntity):
         """Initialize the light."""
         super().__init__(coordinator)
 
-        self.lock = asyncio.Lock()
         self.mac_addr = self.bulb.mac_addr
         bulb_features = lifx_features(self.bulb)
         self.manager = manager
@@ -207,7 +206,7 @@ class LIFXLight(LIFXEntity, LightEntity):
     async def set_state(self, **kwargs: Any) -> None:
         """Set a color on the light and turn it on/off."""
         self.coordinator.async_set_updated_data(None)
-        async with self.lock:
+        async with self.coordinator.lock:
             # Cancel any pending refreshes
             bulb = self.bulb
 

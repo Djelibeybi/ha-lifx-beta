@@ -187,11 +187,10 @@ async def async_execute_lifx(method: Callable) -> Message:
     future: asyncio.Future[Message] = asyncio.Future()
 
     def _callback(bulb: Light, message: Message) -> None:
-
         if (
-            bulb.mac_addr == TARGET_ANY
-            and message is not None
+            message is not None
             and message.target_addr != TARGET_ANY
+            and bulb.mac_addr == TARGET_ANY
         ):
             bulb.mac_addr = message.target_addr
 
@@ -208,4 +207,5 @@ async def async_execute_lifx(method: Callable) -> Message:
 
     if result is None:
         raise asyncio.TimeoutError("No response from LIFX bulb")
+
     return result
