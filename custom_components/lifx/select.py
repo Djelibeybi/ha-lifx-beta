@@ -5,8 +5,8 @@ from aiolifx_themes.themes import ThemeLibrary
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
@@ -46,17 +46,11 @@ async def async_setup_entry(
 
     if lifx_features(coordinator.device)["infrared"]:
         entities.append(
-            LIFXInfraredBrightnessSelectEntity(
-                coordinator, description=INFRARED_BRIGHTNESS_ENTITY
-            )
+            LIFXInfraredBrightnessSelectEntity(coordinator, INFRARED_BRIGHTNESS_ENTITY)
         )
 
     if lifx_features(coordinator.device)["multizone"] is True:
-        entities.append(
-            LIFXThemeSelectEntity(
-                coordinator, description=THEME_ENTITY
-            )
-        )
+        entities.append(LIFXThemeSelectEntity(coordinator, THEME_ENTITY))
 
     async_add_entities(entities)
 
@@ -74,7 +68,6 @@ class LIFXInfraredBrightnessSelectEntity(LIFXEntity, SelectEntity):
         """Initialise the IR brightness config entity."""
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_name = description.name
         self._attr_unique_id = f"{coordinator.serial_number}_{description.key}"
         self._attr_current_option = coordinator.current_infrared_brightness
 
@@ -108,7 +101,6 @@ class LIFXThemeSelectEntity(LIFXEntity, SelectEntity):
 
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_name = description.name
         self._attr_unique_id = f"{coordinator.serial_number}_{description.key}"
         self._attr_current_option = None
 
