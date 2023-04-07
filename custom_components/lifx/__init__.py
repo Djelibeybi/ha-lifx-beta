@@ -64,7 +64,7 @@ PLATFORMS = [
     Platform.SELECT,
     Platform.SENSOR,
 ]
-DISCOVERY_INTERVAL = timedelta(minutes=15)
+DISCOVERY_INTERVAL = timedelta(seconds=30)
 MIGRATION_INTERVAL = timedelta(minutes=5)
 
 DISCOVERY_COOLDOWN = 5

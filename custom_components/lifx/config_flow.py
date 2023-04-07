@@ -245,7 +245,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         ):
             return None  # relays not supported
         # device.mac_addr is not the mac_address, its the serial number
-        device.mac_addr = serial or messages[0].target_addr
+        # device.mac_addr = serial or messages[0].target_addr
         await self.async_set_unique_id(
             formatted_serial(device.mac_addr), raise_on_progress=raise_on_progress
         )

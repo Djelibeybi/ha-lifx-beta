@@ -227,17 +227,16 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
                 await async_execute_lifx(self.device.get_infrared)
 
         except asyncio.TimeoutError as ex:
-            if self._timeouts == 0:
-                self._offline_time = monotonic()
 
             self._timeouts += 1
 
             if self._timeouts >= MAX_TIMEOUTS_TO_DECLARE_UPDATE_FAILED:
+                self._offline_time = monotonic()
                 raise UpdateFailed(
                     f"The device failed to respond after {MAX_TIMEOUTS_TO_DECLARE_UPDATE_FAILED} attempts"
                 ) from ex
 
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "Incrementing timeout counter to %s after no reply from %s (%s)",
                 self._timeouts,
                 self.device.label,
@@ -248,8 +247,8 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
 
         else:
             if self._timeouts > 0:
-                _LOGGER.warning(
-                    "Resetting timeout to 0 for %s (%s) after being offline for %.2f seconds",
+                _LOGGER.debug(
+                    "%s (%s) available after being offline for %.2f seconds",
                     self.device.label or self.device.ip_addr,
                     self.device.mac_addr,
                     monotonic() - self._offline_time,
