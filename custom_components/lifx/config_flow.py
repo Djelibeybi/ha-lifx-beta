@@ -240,10 +240,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if (
             messages is None
             or len(messages) != 4
-            or lifx_features(device)["relays"] is True
             or device.host_firmware_version is None
         ):
-            return None  # relays not supported
+            return None
         # device.mac_addr is not the mac_address, its the serial number
         # device.mac_addr = serial or messages[0].target_addr
         await self.async_set_unique_id(

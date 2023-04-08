@@ -95,6 +95,10 @@ async def async_setup_entry(
         LIFX_SET_HEV_CYCLE_STATE_SCHEMA,
         "set_hev_cycle_state",
     )
+
+    if lifx_features(device)["relays"]:
+        return
+    
     if lifx_features(device)["matrix"]:
         entity: LIFXLight = LIFXMatrix(coordinator, manager, entry)
     elif lifx_features(device)["extended_multizone"]:

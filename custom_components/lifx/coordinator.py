@@ -180,6 +180,13 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
         if features["infrared"] is True:
             device_data["infrared"] = {"brightness": self.device.infrared_brightness}
 
+        if features["relays"] is True:
+            device_data["relays"] = {
+                "Relay 1": self.device.relays_power[0],
+                "Relay 2": self.device.relays_power[1],
+                "Relay 3": self.device.relays_power[2],
+                "Relay 4": self.device.relays_power[3]
+            }
         return device_data
 
     def async_get_entity_id(self, platform: Platform, key: str) -> str | None:
@@ -193,7 +200,10 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
         """Fetch all device data from the api."""
 
         try:
-            tasks: list[Awaitable] = [async_execute_lifx(self.device.get_color)]
+            tasks: list[Awaitable] = []
+
+            if lifx_features(self.device)["color"]:
+                tasks.append(async_execute_lifx(self.device.get_color))
 
             if self.device.host_firmware_version is None:
                 tasks.append(async_execute_lifx(self.device.get_hostfirmware))
@@ -225,6 +235,9 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
 
             if lifx_features(self.device)["infrared"]:
                 await async_execute_lifx(self.device.get_infrared)
+
+            if lifx_features(self.device)["relays"]:
+                await self.async_get_rpower()
 
         except asyncio.TimeoutError as ex:
 
@@ -473,3 +486,16 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
         self.last_used_theme = theme_name
         theme = ThemeLibrary().get_theme(theme_name)
         await ThemePainter(self.hass.loop).paint(theme, [self.device])
+
+    async def async_get_rpower(self, relay_index: int = None) -> None:
+        """Send a get rpower message to the device."""
+        if lifx_features(self.device)["relays"]:
+            await async_execute_lifx(partial(self.device.get_rpower, relay_index))
+        
+
+    async def async_set_rpower(self, relay_index: int, is_on: bool) -> None:
+        """Send a set rpower message to the device."""
+        if lifx_features(self.device)["relays"]:
+            await async_execute_lifx(
+                partial(self.device.set_rpower, relay_index, is_on)
+            )

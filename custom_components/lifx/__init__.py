@@ -63,6 +63,7 @@ PLATFORMS = [
     Platform.LIGHT,
     Platform.SELECT,
     Platform.SENSOR,
+    Platform.SWITCH,
 ]
 DISCOVERY_INTERVAL = timedelta(seconds=30)
 MIGRATION_INTERVAL = timedelta(minutes=5)
