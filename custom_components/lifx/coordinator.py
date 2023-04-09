@@ -7,7 +7,7 @@ from datetime import timedelta
 from enum import IntEnum
 from functools import partial
 from math import floor, log10
-import sys
+from time import monotonic
 from typing import Any, cast
 
 from aiolifx.aiolifx import (
@@ -48,12 +48,6 @@ from .util import (
     lifx_features,
 )
 
-if sys.version_info[:2] < (3, 11):
-    from async_timeout import timeout as asyncio_timeout
-else:
-    from asyncio import timeout as asyncio_timeout
-
-
 LIGHT_UPDATE_INTERVAL = 10
 SENSOR_UPDATE_INTERVAL = 30
 REQUEST_REFRESH_DELAY = 0.35
@@ -89,6 +83,7 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
         self._update_rssi: bool = False
         self._rssi: int = 0
         self.last_used_theme: str = ""
+        self._timeouts = 0
         self._offline_time: float = 0.0
 
         super().__init__(
@@ -197,64 +192,68 @@ class LIFXUpdateCoordinator(DataUpdateCoordinator[None]):
     async def _async_update_data(self) -> None:
         """Fetch all device data from the api."""
 
-        for _ in range(MAX_TIMEOUTS_TO_DECLARE_UPDATE_FAILED - 1):
-            try:
-                tasks: list[Awaitable] = [async_execute_lifx(self.device.get_color)]
+        try:
+            tasks: list[Awaitable] = [async_execute_lifx(self.device.get_color)]
 
-                if self.device.host_firmware_version is None:
-                    tasks.append(async_execute_lifx(self.device.get_hostfirmware))
-                if self.device.product is None:
-                    tasks.append(async_execute_lifx(self.device.get_version))
-                if self.device.group is None:
-                    tasks.append(async_execute_lifx(self.device.get_group))
+            if self.device.host_firmware_version is None:
+                tasks.append(async_execute_lifx(self.device.get_hostfirmware))
+            if self.device.product is None:
+                tasks.append(async_execute_lifx(self.device.get_version))
+            if self.device.group is None:
+                tasks.append(async_execute_lifx(self.device.get_group))
 
-                await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks)
 
-                events = []
-                for _response, event, _callb in self.device.message.values():
-                    if isinstance(event, asyncio.Event):
-                        events.append(event.wait())
-                if events:
-                    async with asyncio_timeout(MESSAGE_TIMEOUT):
-                        await asyncio.gather(*events)
+            while len(self.device.message) > 0:
+                # let the loop run until all messages have replies or aiolifx times out waiting for them
+                await asyncio.sleep(0)  # pragma: no cover
 
-                if self._update_rssi is True:
-                    await self.async_update_rssi()
+            if self._update_rssi is True:
+                await self.async_update_rssi()
 
-                # Update extended multizone devices
-                if lifx_features(self.device)["extended_multizone"]:
-                    await async_execute_lifx(self.device.get_extended_color_zones)
-                    await self.async_get_multizone_effect()
-                # use legacy methods for older devices
-                elif lifx_features(self.device)["multizone"]:
-                    await self.async_get_color_zones()
-                    await self.async_get_multizone_effect()
+            # Update extended multizone devices
+            if lifx_features(self.device)["extended_multizone"]:
+                await async_execute_lifx(self.device.get_extended_color_zones)
+                await self.async_get_multizone_effect()
+            # use legacy methods for older devices
+            elif lifx_features(self.device)["multizone"]:
+                await self.async_get_color_zones()
+                await self.async_get_multizone_effect()
 
-                if lifx_features(self.device)["hev"]:
-                    await self.async_get_hev_cycle()
+            if lifx_features(self.device)["hev"]:
+                await self.async_get_hev_cycle()
 
-                if lifx_features(self.device)["infrared"]:
-                    await async_execute_lifx(self.device.get_infrared)
+            if lifx_features(self.device)["infrared"]:
+                await async_execute_lifx(self.device.get_infrared)
 
-                break
+        except asyncio.TimeoutError as ex:
 
-            except asyncio.TimeoutError:
-                _LOGGER.debug(
-                    "Time out updating %s (%s): will retry update",
-                    self.device.label or self.device.ip_addr,
-                    self.device.mac_addr,
-                )
+            self._timeouts += 1
+
+            if self._timeouts >= MAX_TIMEOUTS_TO_DECLARE_UPDATE_FAILED:
+                self._offline_time = monotonic()
+                raise UpdateFailed(
+                    f"The device failed to respond after {MAX_TIMEOUTS_TO_DECLARE_UPDATE_FAILED} attempts"
+                ) from ex
+
+            _LOGGER.debug(
+                "Incrementing timeout counter to %s after no reply from %s (%s)",
+                self._timeouts,
+                self.device.label,
+                self.device.ip_addr,
+            )
+
+            await self._async_update_data()
 
         else:
-            _LOGGER.error(
-                "Marking %s (%s) as offline after three failed update attempts",
-                self.device.label or self.device.ip_addr,
-                self.device.mac_addr,
-            )
-
-            raise UpdateFailed(
-                f"The device failed to respond after {MAX_TIMEOUTS_TO_DECLARE_UPDATE_FAILED} attempts"
-            )
+            if self._timeouts > 0:
+                _LOGGER.debug(
+                    "%s (%s) available after being offline for %.2f seconds",
+                    self.device.label or self.device.ip_addr,
+                    self.device.mac_addr,
+                    monotonic() - self._offline_time,
+                )
+                self._timeouts = 0
 
     async def async_get_color_zones(self) -> None:
         """Get updated color information for each zone."""
