@@ -6,7 +6,7 @@ from aiolifx_themes.themes import ThemeLibrary
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
@@ -59,7 +59,6 @@ class LIFXInfraredBrightnessSelectEntity(LIFXEntity, SelectEntity):
     """LIFX Nightvision infrared brightness configuration entity."""
 
     _attr_has_entity_name = True
-    _attr_should_poll = False
 
     def __init__(
         self,
@@ -72,10 +71,16 @@ class LIFXInfraredBrightnessSelectEntity(LIFXEntity, SelectEntity):
         self._attr_unique_id = f"{coordinator.serial_number}_{description.key}"
         self._attr_current_option = coordinator.current_infrared_brightness
 
-    @property
-    def current_option(self) -> str:
-        """Return current IR brightness value."""
-        return self.coordinator.current_infrared_brightness
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self._async_update_attrs()
+        super()._handle_coordinator_update()
+
+    @callback
+    def _async_update_attrs(self) -> None:
+        """Handle coordinator updates."""
+        self._attr_current_option = self.coordinator.current_infrared_brightness
 
     async def async_select_option(self, option: str) -> None:
         """Update the infrared brightness value."""
@@ -86,7 +91,6 @@ class LIFXThemeSelectEntity(LIFXEntity, SelectEntity):
     """Theme entity for LIFX multizone devices."""
 
     _attr_has_entity_name = True
-    _attr_should_poll = False
 
     def __init__(
         self,
@@ -100,10 +104,16 @@ class LIFXThemeSelectEntity(LIFXEntity, SelectEntity):
         self._attr_unique_id = f"{coordinator.serial_number}_{description.key}"
         self._attr_current_option = None
 
-    @property
-    def current_option(self) -> str:
-        """Return last applied theme."""
-        return self.coordinator.last_used_theme
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self._async_update_attrs()
+        super()._handle_coordinator_update()
+
+    @callback
+    def _async_update_attrs(self) -> None:
+        """Update attrs from coordinator data."""
+        self._attr_current_option = self.coordinator.last_used_theme
 
     async def async_select_option(self, option: str) -> None:
         """Paint the selected theme onto the device."""
