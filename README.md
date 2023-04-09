@@ -6,12 +6,19 @@ This is a pre-release/testing version of the core LIFX integration. This repo
 exists purely to make it easier to install the test version via HACS instead of
 having to do it manually.
 
-## Current version: `2023.4.2`
+## Current version: `2023.4.3`
+
+This is the latest refactored code waiting to get merged into core via <https://github.com/home-assistant/core/pull/90891>.
+The code has 100% coverage but limited real-world testing, especially with regards to discovery after power loss (whether
+intentional or not). As always, if you have anything to report or questions, please enable debug logging then open
+an issue here on GitHub.
+
+**This version requires at Home Assistant version `2023.4.0` or newer.**
+
+### Previous version: `2023.4.2`
 
 Refactored device updates to remove duplicate/redundant polling. This should result in improved stability
 overall.
-
-**This version requires at Home Assistant version `2023.4.0` or newer.**
 
 ### Previous version: `2023.4.1b0`
 
